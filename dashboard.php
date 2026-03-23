@@ -116,6 +116,18 @@ $stmt = $pdo->prepare("
 $stmt->execute([$user_id, $selected_month_start, $selected_month_end]);
 $month_income = $stmt->fetch()['month_income'] ?? 0;
 
+// Получаем количество счетов
+$stmt = $pdo->prepare("
+    SELECT COUNT(*) as account_count 
+    FROM accounts 
+    WHERE user_id = ? AND is_active = 1
+");
+$stmt->execute([$user_id]);
+$account_count = $stmt->fetch()['account_count'] ?? 0;
+
+// Получаем средний баланс по счетам
+$average_balance = $account_count > 0 ? $total_balance / $account_count : 0;
+
 // Получаем последние 5 транзакций до выбранной даты
 $stmt = $pdo->prepare("
     SELECT t.*, c.name as category_name, c.color as category_color, 
@@ -188,6 +200,46 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$user_id, $selected_month_start, $selected_month_end]);
 $top_categories = $stmt->fetchAll();
+
+// Получаем топ категорий доходов за выбранный месяц
+$stmt = $pdo->prepare("
+    SELECT 
+        c.name as category_name,
+        c.color as category_color,
+        SUM(t.amount) as total_amount
+    FROM transactions t
+    LEFT JOIN categories c ON t.category_id = c.id
+    WHERE t.user_id = ? 
+    AND t.type = 'income'
+    AND t.transaction_date BETWEEN ? AND ?
+    GROUP BY t.category_id
+    ORDER BY total_amount DESC
+    LIMIT 5
+");
+$stmt->execute([$user_id, $selected_month_start, $selected_month_end]);
+$top_income_categories = $stmt->fetchAll();
+
+// Получаем статистику по дням месяца
+$daily_stats = [];
+for ($day = 1; $day <= date('t', strtotime($selected_date)); $day++) {
+    $current_date = date('Y-m-d', strtotime("$selected_month_start + " . ($day - 1) . " days"));
+    $stmt = $pdo->prepare("
+        SELECT 
+            SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as daily_income,
+            SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as daily_expense
+        FROM transactions
+        WHERE user_id = ? AND transaction_date = ?
+    ");
+    $stmt->execute([$user_id, $current_date]);
+    $day_data = $stmt->fetch();
+    
+    $daily_stats[] = [
+        'day' => $day,
+        'date' => $current_date,
+        'income' => $day_data['daily_income'] ?? 0,
+        'expense' => $day_data['daily_expense'] ?? 0
+    ];
+}
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -228,6 +280,7 @@ $top_categories = $stmt->fetchAll();
             border: none;
             box-shadow: 0 5px 15px rgba(0,0,0,0.08);
             transition: transform 0.3s;
+            cursor: pointer;
         }
         .stat-card:hover {
             transform: translateY(-5px);
@@ -285,6 +338,14 @@ $top_categories = $stmt->fetchAll();
         .upcoming-badge {
             background: #ffc107;
             color: #000;
+        }
+        .stat-detail {
+            font-size: 12px;
+            margin-top: 5px;
+            opacity: 0.8;
+        }
+        .progress-bar-custom {
+            transition: width 0.6s ease;
         }
     </style>
 </head>
@@ -362,18 +423,19 @@ $top_categories = $stmt->fetchAll();
                         <?php endif; ?>
                     </div>
                     
-                    <!-- Статистические карточки -->
+                    <!-- Статистические карточки (6 карточек) -->
                     <div class="row mb-4">
-                        <div class="col-md-3">
+                        <div class="col-md-4 col-lg-2 mb-3">
                             <div class="card stat-card">
                                 <div class="card-body">
                                     <div class="d-flex justify-content-between align-items-center">
                                         <div>
                                             <h6 class="text-muted mb-2">Общий баланс</h6>
-                                            <h3 class="mb-0 <?php echo $total_balance_all >= 0 ? 'balance-positive' : 'balance-negative'; ?>">
-                                                <?php echo number_format($total_balance_all, 2, '.', ' '); ?> ₽
-                                            </h3>
-                                            <small class="text-muted">на <?php echo $selected_date_formatted; ?></small>
+                                            <h4 class="mb-0 <?php echo $total_balance_all >= 0 ? 'balance-positive' : 'balance-negative'; ?>">
+                                                <?php echo number_format($total_balance_all, 2, '.', ' '); ?>
+                                            </h4>
+                                            <small class="text-muted">₽</small>
+                                            <div class="stat-detail">на <?php echo $selected_date_formatted; ?></div>
                                         </div>
                                         <div class="stat-icon" style="background: rgba(102, 126, 234, 0.1); color: #667eea;">
                                             <i class="bi bi-wallet2"></i>
@@ -382,88 +444,102 @@ $top_categories = $stmt->fetchAll();
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-3">
+                        
+                        <div class="col-md-4 col-lg-2 mb-3">
                             <div class="card stat-card">
                                 <div class="card-body">
                                     <div class="d-flex justify-content-between align-items-center">
                                         <div>
-                                            <h6 class="text-muted mb-2">Всего доходов</h6>
-                                            <h3 class="mb-0 text-success">
-                                                +<?php echo number_format($total_income_all, 2, '.', ' '); ?> ₽
-                                            </h3>
-                                            <small class="text-muted">за всё время</small>
+                                            <h6 class="text-muted mb-2">Сумма счетов</h6>
+                                            <h4 class="mb-0 <?php echo $total_balance >= 0 ? 'balance-positive' : 'balance-negative'; ?>">
+                                                <?php echo number_format($total_balance, 2, '.', ' '); ?>
+                                            </h4>
+                                            <small class="text-muted">₽</small>
+                                            <div class="stat-detail"><?php echo $account_count; ?> счетов</div>
                                         </div>
-                                        <div class="stat-icon" style="background: rgba(40, 167, 69, 0.1); color: #28a745;">
-                                            <i class="bi bi-arrow-up-circle"></i>
+                                        <div class="stat-icon" style="background: rgba(13, 110, 253, 0.1); color: #0d6efd;">
+                                            <i class="bi bi-bank"></i>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-3">
-                            <div class="card stat-card">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <h6 class="text-muted mb-2">Всего расходов</h6>
-                                            <h3 class="mb-0 text-danger">
-                                                -<?php echo number_format($total_expense_all, 2, '.', ' '); ?> ₽
-                                            </h3>
-                                            <small class="text-muted">за всё время</small>
-                                        </div>
-                                        <div class="stat-icon" style="background: rgba(220, 53, 69, 0.1); color: #dc3545;">
-                                            <i class="bi bi-arrow-down-circle"></i>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card stat-card">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <h6 class="text-muted mb-2">Предстоящие расходы</h6>
-                                            <h3 class="mb-0 text-warning">
-                                                <?php echo number_format($upcoming_expenses, 2, '.', ' '); ?> ₽
-                                            </h3>
-                                            <small class="text-muted"><?php echo $upcoming_count; ?> операций</small>
-                                        </div>
-                                        <div class="stat-icon" style="background: rgba(255, 193, 7, 0.1); color: #ffc107;">
-                                            <i class="bi bi-calendar-week"></i>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Monthly Statistics -->
-                    <div class="row mb-4">
-                        <div class="col-md-6">
-                            <div class="card stat-card">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <h6 class="text-muted mb-2">Доходы за месяц</h6>
-                                            <h4 class="mb-0 text-success">+<?php echo number_format($month_income, 2, '.', ' '); ?> ₽</h4>
-                                            <small><?php echo date('F Y', strtotime($selected_date)); ?></small>
-                                        </div>
-                                        <i class="bi bi-graph-up fs-1 text-success opacity-50"></i>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
+                        
+                        <div class="col-md-4 col-lg-2 mb-3">
                             <div class="card stat-card">
                                 <div class="card-body">
                                     <div class="d-flex justify-content-between align-items-center">
                                         <div>
                                             <h6 class="text-muted mb-2">Расходы за месяц</h6>
-                                            <h4 class="mb-0 text-danger">-<?php echo number_format($month_expenses, 2, '.', ' '); ?> ₽</h4>
-                                            <small><?php echo date('F Y', strtotime($selected_date)); ?></small>
+                                            <h4 class="mb-0 text-danger">
+                                                <?php echo number_format($month_expenses, 2, '.', ' '); ?>
+                                            </h4>
+                                            <small class="text-muted">₽</small>
+                                            <div class="stat-detail"><?php echo date('F Y', strtotime($selected_date)); ?></div>
                                         </div>
-                                        <i class="bi bi-graph-down fs-1 text-danger opacity-50"></i>
+                                        <div class="stat-icon" style="background: rgba(220, 53, 69, 0.1); color: #dc3545;">
+                                            <i class="bi bi-cart"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4 col-lg-2 mb-3">
+                            <div class="card stat-card">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <h6 class="text-muted mb-2">Доходы за месяц</h6>
+                                            <h4 class="mb-0 text-success">
+                                                <?php echo number_format($month_income, 2, '.', ' '); ?>
+                                            </h4>
+                                            <small class="text-muted">₽</small>
+                                            <div class="stat-detail"><?php echo date('F Y', strtotime($selected_date)); ?></div>
+                                        </div>
+                                        <div class="stat-icon" style="background: rgba(40, 167, 69, 0.1); color: #28a745;">
+                                            <i class="bi bi-graph-up"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4 col-lg-2 mb-3">
+                            <div class="card stat-card">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <h6 class="text-muted mb-2">Средний баланс счета</h6>
+                                            <h4 class="mb-0 <?php echo $average_balance >= 0 ? 'balance-positive' : 'balance-negative'; ?>">
+                                                <?php echo number_format($average_balance, 2, '.', ' '); ?>
+                                            </h4>
+                                            <small class="text-muted">₽</small>
+                                            <div class="stat-detail">на 1 счет</div>
+                                        </div>
+                                        <div class="stat-icon" style="background: rgba(32, 201, 151, 0.1); color: #20c997;">
+                                            <i class="bi bi-calculator"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4 col-lg-2 mb-3">
+                            <div class="card stat-card">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <h6 class="text-muted mb-2">Предстоящие расходы</h6>
+                                            <h4 class="mb-0 text-warning">
+                                                <?php echo number_format($upcoming_expenses, 2, '.', ' '); ?>
+                                            </h4>
+                                            <small class="text-muted">₽</small>
+                                            <div class="stat-detail"><?php echo $upcoming_count; ?> операций</div>
+                                        </div>
+                                        <div class="stat-icon" style="background: rgba(255, 193, 7, 0.1); color: #ffc107;">
+                                            <i class="bi bi-calendar-week"></i>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -477,6 +553,14 @@ $top_categories = $stmt->fetchAll();
                     </div>
                     
                     <div class="row">
+                        <!-- Daily Stats for Month -->
+                        <div class="col-md-6 mb-4">
+                            <div class="chart-container">
+                                <h5><i class="bi bi-calendar-day"></i> Ежедневная динамика за месяц</h5>
+                                <canvas id="dailyChart" width="400" height="250"></canvas>
+                            </div>
+                        </div>
+                        
                         <!-- Top Categories -->
                         <div class="col-md-6 mb-4">
                             <div class="card">
@@ -500,7 +584,43 @@ $top_categories = $stmt->fetchAll();
                                                     <?php 
                                                     $percentage = ($category['total_amount'] / max($month_expenses, 1)) * 100;
                                                     ?>
-                                                    <div class="progress-bar" style="width: <?php echo $percentage; ?>%; background-color: <?php echo htmlspecialchars($category['category_color']); ?>"></div>
+                                                    <div class="progress-bar progress-bar-custom" style="width: <?php echo $percentage; ?>%; background-color: <?php echo htmlspecialchars($category['category_color']); ?>"></div>
+                                                </div>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <p class="text-center text-muted my-4">Нет данных за выбранный месяц</p>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <!-- Top Income Categories -->
+                        <div class="col-md-6 mb-4">
+                            <div class="card">
+                                <div class="card-header bg-white">
+                                    <h5 class="mb-0"><i class="bi bi-arrow-up-circle"></i> Топ категорий доходов</h5>
+                                    <small class="text-muted">за <?php echo date('F Y', strtotime($selected_date)); ?></small>
+                                </div>
+                                <div class="card-body">
+                                    <?php if (count($top_income_categories) > 0): ?>
+                                        <?php foreach ($top_income_categories as $category): ?>
+                                            <div class="mb-3">
+                                                <div class="d-flex justify-content-between mb-1">
+                                                    <span>
+                                                        <span class="badge" style="background-color: <?php echo htmlspecialchars($category['category_color']); ?>">
+                                                            <?php echo htmlspecialchars($category['category_name']); ?>
+                                                        </span>
+                                                    </span>
+                                                    <span class="fw-bold text-success">+<?php echo number_format($category['total_amount'], 2, '.', ' '); ?> ₽</span>
+                                                </div>
+                                                <div class="progress" style="height: 8px;">
+                                                    <?php 
+                                                    $percentage = ($category['total_amount'] / max($month_income, 1)) * 100;
+                                                    ?>
+                                                    <div class="progress-bar progress-bar-custom" style="width: <?php echo $percentage; ?>%; background-color: <?php echo htmlspecialchars($category['category_color']); ?>"></div>
                                                 </div>
                                             </div>
                                         <?php endforeach; ?>
@@ -711,6 +831,64 @@ $top_categories = $stmt->fetchAll();
                                 callback: function(value) {
                                     return value.toLocaleString('ru-RU') + ' ₽';
                                 }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Ежедневная динамика за месяц
+        const dailyStats = <?php echo json_encode($daily_stats); ?>;
+        
+        if (dailyStats.length > 0) {
+            const dailyCtx = document.getElementById('dailyChart').getContext('2d');
+            new Chart(dailyCtx, {
+                type: 'bar',
+                data: {
+                    labels: dailyStats.map(item => item.day),
+                    datasets: [
+                        {
+                            label: 'Доходы',
+                            data: dailyStats.map(item => item.income),
+                            backgroundColor: 'rgba(40, 167, 69, 0.7)',
+                            borderColor: '#28a745',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Расходы',
+                            data: dailyStats.map(item => item.expense),
+                            backgroundColor: 'rgba(220, 53, 69, 0.7)',
+                            borderColor: '#dc3545',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.raw.toLocaleString('ru-RU', {minimumFractionDigits: 2})} ₽`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString('ru-RU') + ' ₽';
+                                }
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'День месяца'
                             }
                         }
                     }
