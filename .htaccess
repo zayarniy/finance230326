@@ -1,0 +1,13 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+    
+    # Защита конфигурационных файлов
+    <Files "config.php">
+        Order Allow,Deny
+        Deny from all
+    </Files>
+</IfModule>
+
+# Установка кодировки
+AddDefaultCharset UTF-8
