@@ -17,9 +17,8 @@ $filter_category = $_GET['category'] ?? 'all';
 $filter_account = $_GET['account'] ?? 'all';
 $filter_tag = $_GET['tag'] ?? '';
 
-// Обработка действий
+// Обработка POST запросов (оставляем как есть)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Добавление новой операции
     if (isset($_POST['add_transaction'])) {
         $type = $_POST['transaction_type'] ?? 'expense';
         $account_id = $_POST['account_id'] ?? 0;
@@ -45,16 +44,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 $pdo->commit();
                 $message = "Операция успешно добавлена";
+                header("Location: finances.php");
+                exit;
             } catch (PDOException $e) {
                 $pdo->rollBack();
-                $error = "Ошибка при добавлении операции: " . $e->getMessage();
+                $error = "Ошибка при добавлении операции";
             }
         } else {
             $error = "Заполните все обязательные поля";
         }
     }
     
-    // Редактирование операции
     elseif (isset($_POST['edit_transaction'])) {
         $transaction_id = $_POST['transaction_id'] ?? 0;
         $type = $_POST['transaction_type'] ?? 'expense';
@@ -93,17 +93,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     $pdo->commit();
                     $message = "Операция успешно обновлена";
+                    header("Location: finances.php");
+                    exit;
                 }
             } catch (PDOException $e) {
                 $pdo->rollBack();
-                $error = "Ошибка при обновлении операции: " . $e->getMessage();
+                $error = "Ошибка при обновлении операции";
             }
-        } else {
-            $error = "Заполните все обязательные поля";
         }
     }
     
-    // Удаление операции
     elseif (isset($_POST['delete_transaction'])) {
         $transaction_id = $_POST['transaction_id'] ?? 0;
         
@@ -128,16 +127,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     $pdo->commit();
                     $message = "Операция успешно удалена";
+                    header("Location: finances.php");
+                    exit;
                 }
             } catch (PDOException $e) {
                 $pdo->rollBack();
-                $error = "Ошибка при удалении операции: " . $e->getMessage();
+                $error = "Ошибка при удалении операции";
             }
         }
     }
 }
 
-// Получение списка операций с фильтрацией
+// Получение данных
 $sql = "SELECT t.*, c.name as category_name, c.color as category_color, a.account_number, a.bank_name, a.color as account_color 
         FROM transactions t 
         LEFT JOIN categories c ON t.category_id = c.id 
@@ -189,7 +190,6 @@ $stmt = $pdo->prepare("SELECT * FROM tags WHERE user_id = ? ORDER BY name");
 $stmt->execute([$user_id]);
 $tags = $stmt->fetchAll();
 
-// Статистика
 $total_income = 0;
 $total_expense = 0;
 foreach ($transactions as $trans) {
@@ -205,441 +205,445 @@ $balance = $total_income - $total_expense;
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="theme-color" content="#667eea">
     <title>Финансы - Финансовый дневник</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
-        .sidebar {
-            min-height: 100vh;
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            padding-bottom: 70px;
+        }
+        
+        .mobile-header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .sidebar .nav-link {
-            color: rgba(255,255,255,0.8);
-            padding: 12px 20px;
-            margin: 5px 0;
-            border-radius: 10px;
-            transition: all 0.3s;
-        }
-        .sidebar .nav-link:hover, .sidebar .nav-link.active {
-            background: rgba(255,255,255,0.1);
             color: white;
-            transform: translateX(5px);
+            padding: 20px 16px;
+            border-radius: 0 0 24px 24px;
+            margin-bottom: 16px;
         }
-        .sidebar .nav-link i {
-            margin-right: 10px;
-        }
-        .main-content {
-            background-color: #f8f9fa;
-            min-height: 100vh;
-        }
-        .stat-card {
-            border-radius: 15px;
+        
+        .back-button {
+            background: rgba(255,255,255,0.2);
             border: none;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            transition: transform 0.3s;
-        }
-        .stat-card:hover {
-            transform: translateY(-3px);
-        }
-        .filter-card {
-            border-radius: 15px;
-            border: none;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-        .transaction-row {
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        .transaction-row:hover {
-            background-color: #f8f9fa;
-            transform: translateX(5px);
-        }
-        .tag-badge {
-            background-color: #e9ecef;
-            color: #495057;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            margin-right: 5px;
-            margin-bottom: 5px;
+            border-radius: 30px;
+            padding: 8px 16px;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            text-decoration: none;
             display: inline-block;
             cursor: pointer;
         }
-        .tag-badge:hover {
-            background-color: #dee2e6;
+        
+        .page-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 12px 0 4px;
         }
-        .tags-modal-container {
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            padding: 0 16px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card-mobile {
+            background: white;
+            border-radius: 16px;
+            padding: 12px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .filter-bar {
+            background: white;
+            margin: 0 16px 16px;
+            border-radius: 20px;
+            padding: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        
+        .filter-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #f8f9fa;
+            border-radius: 30px;
+            padding: 8px 14px;
+            font-size: 13px;
+            margin: 0 4px 8px 0;
+            text-decoration: none;
+        }
+        
+        .transaction-list {
+            margin: 0 16px;
+        }
+        
+        .transaction-card {
+            background: white;
+            border-radius: 16px;
+            padding: 14px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            cursor: pointer;
+        }
+        
+        .transaction-card:active {
+            transform: scale(0.98);
+        }
+        
+        .transaction-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .transaction-date {
+            font-size: 12px;
+            color: #6c757d;
+        }
+        
+        .transaction-type {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .transaction-type.income {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .transaction-type.expense {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .transaction-body {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .transaction-amount {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .transaction-amount.income {
+            color: #28a745;
+        }
+        
+        .transaction-amount.expense {
+            color: #dc3545;
+        }
+        
+        .fab {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            width: 56px;
+            height: 56px;
+            border-radius: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(102,126,234,0.4);
+            cursor: pointer;
+            z-index: 1000;
+        }
+        
+        .fab i {
+            font-size: 24px;
+            color: white;
+        }
+        
+        .modal-content {
+            border-radius: 24px 24px 0 0;
+        }
+        
+        .type-selector {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .type-btn {
+            flex: 1;
+            padding: 12px;
+            border-radius: 30px;
+            border: 2px solid #e9ecef;
+            background: white;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        
+        .type-btn.active-income {
+            background: #28a745;
+            color: white;
+        }
+        
+        .type-btn.active-expense {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .tags-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
             max-height: 300px;
             overflow-y: auto;
         }
-        .tag-selector {
+        
+        .tag-option {
+            padding: 10px;
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            text-align: center;
             cursor: pointer;
-            transition: all 0.2s;
         }
-        .tag-selector:hover {
-            transform: scale(1.02);
-            background-color: #f8f9fa;
+        
+        .tag-option.selected {
+            background: #e9ecef;
+            border-color: #667eea;
         }
-        .tag-selector.selected {
-            background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
-            border-color: #667eea !important;
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6c757d;
         }
-        .type-btn {
-            border-radius: 25px;
-            padding: 8px 20px;
-            transition: all 0.3s;
+        
+        .mobile-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            padding: 8px 0;
+            z-index: 1000;
         }
-        .type-btn.active-income {
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        
+        .mobile-nav .nav-item {
+            text-align: center;
+            padding: 8px 0;
+            color: #6c757d;
+            text-decoration: none;
+            display: block;
+        }
+        
+        .mobile-nav .nav-item.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            border-color: transparent;
         }
-        .type-btn.active-expense {
-            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-            color: white;
-            border-color: transparent;
+        
+        .mobile-nav .nav-item i {
+            font-size: 22px;
+            display: block;
+            margin-bottom: 4px;
+        }
+        
+        .mobile-nav .nav-item span {
+            font-size: 11px;
+        }
+        
+        .text-success {
+            color: #28a745 !important;
+        }
+        
+        .text-danger {
+            color: #dc3545 !important;
+        }
+        
+        .text-warning {
+            color: #ffc107 !important;
+        }
+        
+        .text-primary {
+            color: #667eea !important;
         }
     </style>
 </head>
 <body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Sidebar -->
-            <div class="col-md-2 p-0">
-                <div class="sidebar">
-                    <div class="text-center py-4">
-                        <i class="bi bi-wallet2" style="font-size: 48px; color: white;"></i>
-                        <h5 class="text-white mt-2"><?php echo htmlspecialchars($_SESSION['username']); ?></h5>
-                        <small class="text-white-50">Финансовый дневник</small>
+    <div class="mobile-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <a href="../dashboard.php" class="back-button">← Назад</a>
+            <button class="back-button" id="filterBtn">📊 Фильтр</button>
+        </div>
+        <div class="page-title">Финансы</div>
+        <div class="small">Управление доходами и расходами</div>
+    </div>
+    
+    <div class="stats-grid">
+        <div class="stat-card-mobile">
+            <div class="text-success fs-4">↑</div>
+            <div class="stat-value text-success">+<?php echo number_format($total_income, 0, '.', ' '); ?></div>
+            <div class="small">Доходы</div>
+        </div>
+        <div class="stat-card-mobile">
+            <div class="text-danger fs-4">↓</div>
+            <div class="stat-value text-danger">-<?php echo number_format($total_expense, 0, '.', ' '); ?></div>
+            <div class="small">Расходы</div>
+        </div>
+        <div class="stat-card-mobile">
+            <div class="fs-4">💰</div>
+            <div class="stat-value"><?php echo number_format($balance, 0, '.', ' '); ?></div>
+            <div class="small">Баланс</div>
+        </div>
+    </div>
+    
+    <?php if ($filter_type != 'all' || $filter_category != 'all' || $filter_account != 'all' || !empty($filter_tag)): ?>
+    <div class="filter-bar">
+        <div class="small mb-2">Активные фильтры:</div>
+        <div>
+            <a href="finances.php" class="filter-chip text-danger">✖ Сбросить</a>
+        </div>
+    </div>
+    <?php endif; ?>
+    
+    <div class="transaction-list" id="transactionList">
+        <?php if (count($transactions) > 0): ?>
+            <?php foreach ($transactions as $t): ?>
+                <div class="transaction-card" data-id="<?php echo $t['id']; ?>" data-type="<?php echo $t['type']; ?>" data-account="<?php echo $t['account_id']; ?>" data-category="<?php echo $t['category_id']; ?>" data-amount="<?php echo $t['amount']; ?>" data-date="<?php echo $t['transaction_date']; ?>" data-desc="<?php echo htmlspecialchars($t['description'] ?? ''); ?>" data-tags="<?php echo htmlspecialchars($t['tags_text'] ?? ''); ?>">
+                    <div class="transaction-header">
+                        <span class="transaction-date">📅 <?php echo date('d.m.Y', strtotime($t['transaction_date'])); ?></span>
+                        <span class="transaction-type <?php echo $t['type']; ?>"><?php echo $t['type'] == 'income' ? 'Доход' : 'Расход'; ?></span>
                     </div>
-                    <nav class="nav flex-column px-3">
-                        <a class="nav-link" href="../dashboard.php">
-                            <i class="bi bi-speedometer2"></i> Дашборд
-                        </a>
-                        <a class="nav-link" href="tags.php">
-                            <i class="bi bi-tags"></i> Банк Меток
-                        </a>
-                        <a class="nav-link" href="categories.php">
-                            <i class="bi bi-grid"></i> Банк Категорий
-                        </a>
-                        <a class="nav-link" href="accounts.php">
-                            <i class="bi bi-bank"></i> Справочник Счетов
-                        </a>
-                        <a class="nav-link active" href="finances.php">
-                            <i class="bi bi-calculator"></i> Финансы
-                        </a>
-                        <a class="nav-link" href="transfers.php">
-                            <i class="bi bi-arrow-left-right"></i> Переводы
-                        </a>
-                        <a class="nav-link" href="statistics.php">
-                            <i class="bi bi-graph-up"></i> Статистика
-                        </a>
-                        <hr class="bg-light">
-                        <a class="nav-link" href="../profile.php">
-                            <i class="bi bi-person-circle"></i> Профиль
-                        </a>
-                        <a class="nav-link" href="../logout.php">
-                            <i class="bi bi-box-arrow-right"></i> Выход
-                        </a>
-                    </nav>
+                    <div class="transaction-body">
+                        <div>
+                            <div><strong><?php echo htmlspecialchars($t['category_name']); ?></strong></div>
+                            <div class="small">🏦 <?php echo htmlspecialchars($t['bank_name']); ?></div>
+                        </div>
+                        <div class="transaction-amount <?php echo $t['type']; ?>">
+                            <?php echo ($t['type'] == 'income' ? '+' : '-') . number_format($t['amount'], 0, '.', ' '); ?> ₽
+                        </div>
+                    </div>
+                    <?php if (!empty($t['description'])): ?>
+                        <div class="small text-muted mt-2">📝 <?php echo htmlspecialchars(substr($t['description'], 0, 50)); ?></div>
+                    <?php endif; ?>
                 </div>
+            <?php endforeach; ?>
+        <?php else: ?>
+            <div class="empty-state">
+                <div class="fs-1">📭</div>
+                <h5>Нет операций</h5>
+                <p>Добавьте первую операцию</p>
             </div>
-            
-            <!-- Main Content -->
-            <div class="col-md-10 p-0">
-                <div class="main-content">
-                    <div class="p-4">
-                        <!-- Header -->
-                        <div class="d-flex justify-content-between align-items-center mb-4">
-                            <div>
-                                <h2><i class="bi bi-calculator"></i> Финансы</h2>
-                                <p class="text-muted">Управление доходами и расходами</p>
-                            </div>
-                            <button type="button" class="btn btn-primary" onclick="openAddTransactionModal()">
-                                <i class="bi bi-plus-circle"></i> Добавить операцию
-                            </button>
-                        </div>
-                        
-                        <!-- Messages -->
-                        <?php if ($message): ?>
-                            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                <i class="bi bi-check-circle"></i> <?php echo htmlspecialchars($message); ?>
-                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                            </div>
-                        <?php endif; ?>
-                        
-                        <?php if ($error): ?>
-                            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                                <i class="bi bi-exclamation-triangle"></i> <?php echo htmlspecialchars($error); ?>
-                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                            </div>
-                        <?php endif; ?>
-                        
-                        <!-- Statistics Cards -->
-                        <div class="row mb-4">
-                            <div class="col-md-4">
-                                <div class="card stat-card bg-success text-white">
-                                    <div class="card-body">
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <div>
-                                                <h6 class="card-title">Доходы</h6>
-                                                <h3 class="mb-0">+<?php echo number_format($total_income, 2, '.', ' '); ?> ₽</h3>
-                                            </div>
-                                            <i class="bi bi-arrow-up-circle fs-1 opacity-50"></i>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="card stat-card bg-danger text-white">
-                                    <div class="card-body">
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <div>
-                                                <h6 class="card-title">Расходы</h6>
-                                                <h3 class="mb-0">-<?php echo number_format($total_expense, 2, '.', ' '); ?> ₽</h3>
-                                            </div>
-                                            <i class="bi bi-arrow-down-circle fs-1 opacity-50"></i>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="card stat-card <?php echo $balance >= 0 ? 'bg-primary' : 'bg-warning'; ?> text-white">
-                                    <div class="card-body">
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <div>
-                                                <h6 class="card-title">Баланс</h6>
-                                                <h3 class="mb-0"><?php echo number_format($balance, 2, '.', ' '); ?> ₽</h3>
-                                            </div>
-                                            <i class="bi bi-wallet2 fs-1 opacity-50"></i>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Filter Card -->
-                        <div class="card filter-card mb-4">
-                            <div class="card-body">
-                                <form method="GET" action="" class="row g-3">
-                                    <div class="col-md-2">
-                                        <label class="form-label">Тип</label>
-                                        <select name="type" class="form-select">
-                                            <option value="all" <?php echo $filter_type == 'all' ? 'selected' : ''; ?>>Все</option>
-                                            <option value="income" <?php echo $filter_type == 'income' ? 'selected' : ''; ?>>Доходы</option>
-                                            <option value="expense" <?php echo $filter_type == 'expense' ? 'selected' : ''; ?>>Расходы</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label">С даты</label>
-                                        <input type="date" name="date_from" class="form-control" value="<?php echo $filter_date_from; ?>">
-                                    </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label">По дату</label>
-                                        <input type="date" name="date_to" class="form-control" value="<?php echo $filter_date_to; ?>">
-                                    </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label">Категория</label>
-                                        <select name="category" class="form-select">
-                                            <option value="all">Все категории</option>
-                                            <?php foreach ($categories as $cat): ?>
-                                                <option value="<?php echo $cat['id']; ?>" <?php echo $filter_category == $cat['id'] ? 'selected' : ''; ?>>
-                                                    <?php echo htmlspecialchars($cat['name']); ?>
-                                                </option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label">Счет</label>
-                                        <select name="account" class="form-select">
-                                            <option value="all">Все счета</option>
-                                            <?php foreach ($accounts as $acc): ?>
-                                                <option value="<?php echo $acc['id']; ?>" <?php echo $filter_account == $acc['id'] ? 'selected' : ''; ?>>
-                                                    <?php echo htmlspecialchars($acc['bank_name']); ?>
-                                                </option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label">Метка</label>
-                                        <input type="text" name="tag" class="form-control" placeholder="Поиск по меткам" value="<?php echo htmlspecialchars($filter_tag); ?>">
-                                    </div>
-                                    <div class="col-md-12">
-                                        <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i> Применить фильтр</button>
-                                        <a href="finances.php" class="btn btn-secondary"><i class="bi bi-arrow-repeat"></i> Сбросить</a>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                        
-                        <!-- Transactions Table -->
-                        <div class="card">
-                            <div class="card-header bg-white">
-                                <h5 class="mb-0"><i class="bi bi-list-ul"></i> Список операций</h5>
-                            </div>
-                            <div class="card-body p-0">
-                                <div class="table-responsive">
-                                    <table class="table table-hover mb-0">
-                                        <thead class="table-light">
-                                            <tr>
-                                                <th>Дата</th>
-                                                <th>Тип</th>
-                                                <th>Категория</th>
-                                                <th>Счет</th>
-                                                <th>Сумма</th>
-                                                <th>Описание</th>
-                                                <th>Метки</th>
-                                                <th>Действия</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <?php if (count($transactions) > 0): ?>
-                                                <?php foreach ($transactions as $transaction): ?>
-                                                    <tr>
-                                                        <td><?php echo date('d.m.Y', strtotime($transaction['transaction_date'])); ?></td>
-                                                        <td>
-                                                            <?php if ($transaction['type'] == 'income'): ?>
-                                                                <span class="badge bg-success">Доход</span>
-                                                            <?php else: ?>
-                                                                <span class="badge bg-danger">Расход</span>
-                                                            <?php endif; ?>
-                                                        </td>
-                                                        <td>
-                                                            <span class="badge" style="background-color: <?php echo htmlspecialchars($transaction['category_color']); ?>">
-                                                                <?php echo htmlspecialchars($transaction['category_name']); ?>
-                                                            </span>
-                                                        </td>
-                                                        <td>
-                                                            <i class="bi bi-bank"></i>
-                                                            <?php echo htmlspecialchars($transaction['bank_name']); ?>
-                                                        </td>
-                                                        <td class="<?php echo $transaction['type'] == 'income' ? 'text-success' : 'text-danger'; ?> fw-bold">
-                                                            <?php echo ($transaction['type'] == 'income' ? '+' : '-') . number_format($transaction['amount'], 2, '.', ' '); ?> ₽
-                                                        </td>
-                                                        <td><?php echo htmlspecialchars($transaction['description'] ?: '-'); ?></td>
-                                                        <td>
-                                                            <?php if (!empty($transaction['tags_text'])): ?>
-                                                                <?php $tags_array = explode(';', $transaction['tags_text']); ?>
-                                                                <?php foreach ($tags_array as $tag): ?>
-                                                                    <span class="tag-badge"><?php echo htmlspecialchars(trim($tag)); ?></span>
-                                                                <?php endforeach; ?>
-                                                            <?php else: ?>
-                                                                <span class="text-muted">—</span>
-                                                            <?php endif; ?>
-                                                        </td>
-                                                        <td>
-                                                            <button class="btn btn-sm btn-outline-primary" onclick='editTransaction(<?php echo json_encode($transaction); ?>)'>
-                                                                <i class="bi bi-pencil"></i>
-                                                            </button>
-                                                            <button class="btn btn-sm btn-outline-danger" onclick='deleteTransaction(<?php echo $transaction['id']; ?>, <?php echo json_encode($transaction['description'] ?: 'Операция'); ?>)'>
-                                                                <i class="bi bi-trash"></i>
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                <?php endforeach; ?>
-                                            <?php else: ?>
-                                                <tr>
-                                                    <td colspan="8" class="text-center py-4">
-                                                        <i class="bi bi-inbox fs-1 text-muted"></i>
-                                                        <p class="text-muted mt-2">Нет операций за выбранный период</p>
-                                                        <button class="btn btn-sm btn-primary" onclick="openAddTransactionModal()">
-                                                            <i class="bi bi-plus-circle"></i> Добавить первую операцию
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            <?php endif; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+        <?php endif; ?>
+    </div>
+    
+    <div class="fab" id="addBtn">
+        <i>+</i>
+    </div>
+    
+    <div class="mobile-nav">
+        <div class="row g-0">
+            <div class="col-3"><a href="../dashboard.php" class="nav-item">🏠<span>Главная</span></a></div>
+            <div class="col-3"><a href="finances.php" class="nav-item active">💰<span>Финансы</span></a></div>
+            <div class="col-3"><a href="statistics.php" class="nav-item">📊<span>Статистика</span></a></div>
+            <div class="col-3"><a href="../profile.php" class="nav-item">👤<span>Профиль</span></a></div>
+        </div>
+    </div>
+    
+    <!-- Filter Modal -->
+    <div class="modal fade" id="filterModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5>Фильтры</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
+                <form method="GET">
+                    <div class="modal-body">
+                        <select name="type" class="form-select mb-2">
+                            <option value="all">Все типы</option>
+                            <option value="income">Доходы</option>
+                            <option value="expense">Расходы</option>
+                        </select>
+                        <select name="category" class="form-select mb-2">
+                            <option value="all">Все категории</option>
+                            <?php foreach ($categories as $c): ?>
+                                <option value="<?php echo $c['id']; ?>"><?php echo htmlspecialchars($c['name']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <select name="account" class="form-select mb-2">
+                            <option value="all">Все счета</option>
+                            <?php foreach ($accounts as $a): ?>
+                                <option value="<?php echo $a['id']; ?>"><?php echo htmlspecialchars($a['bank_name']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <input type="date" name="date_from" class="form-control mb-2" value="<?php echo $filter_date_from; ?>">
+                        <input type="date" name="date_to" class="form-control mb-2" value="<?php echo $filter_date_to; ?>">
+                        <input type="text" name="tag" class="form-control" placeholder="Метка" value="<?php echo htmlspecialchars($filter_tag); ?>">
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary">Применить</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
     
-    <!-- Transaction Modal (Add/Edit) -->
-    <div class="modal fade" id="transactionModal" tabindex="-1" data-bs-backdrop="static">
-        <div class="modal-dialog modal-lg">
+    <!-- Transaction Modal -->
+    <div class="modal fade" id="transactionModal" tabindex="-1">
+        <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="transactionModalTitle">Добавить операцию</h5>
+                    <h5 id="modalTitle">Добавить операцию</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <form method="POST" action="" id="transactionForm">
+                <form method="POST" id="transactionForm">
                     <div class="modal-body">
-                        <input type="hidden" name="transaction_id" id="transaction_id">
-                        
-                        <div class="mb-3">
-                            <label class="form-label">Тип операции *</label>
-                            <div class="d-flex gap-2">
-                                <button type="button" class="btn btn-outline-danger type-btn" onclick="setTransactionType('expense')" id="expenseTypeBtn">
-                                    <i class="bi bi-arrow-down-circle"></i> Расход
-                                </button>
-                                <button type="button" class="btn btn-outline-success type-btn" onclick="setTransactionType('income')" id="incomeTypeBtn">
-                                    <i class="bi bi-arrow-up-circle"></i> Доход
-                                </button>
-                            </div>
-                            <input type="hidden" name="transaction_type" id="transaction_type" value="expense">
+                        <input type="hidden" name="transaction_id" id="transId">
+                        <div class="type-selector">
+                            <button type="button" class="type-btn" id="expenseBtn">Расход</button>
+                            <button type="button" class="type-btn" id="incomeBtn">Доход</button>
                         </div>
+                        <input type="hidden" name="transaction_type" id="transType" value="expense">
                         
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="account_id" class="form-label">Счет *</label>
-                                <select class="form-select" id="account_id" name="account_id" required>
-                                    <option value="">Выберите счет</option>
-                                    <?php foreach ($accounts as $account): ?>
-                                        <option value="<?php echo $account['id']; ?>" data-balance="<?php echo $account['current_balance']; ?>">
-                                            <?php echo htmlspecialchars($account['bank_name'] . ' - ' . $account['account_number'] . ' (' . number_format($account['current_balance'], 2, '.', ' ') . ' ₽)'); ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="category_id" class="form-label">Категория *</label>
-                                <select class="form-select" id="category_id" name="category_id" required>
-                                    <option value="">Выберите категорию</option>
-                                    <?php foreach ($categories as $category): ?>
-                                        <option value="<?php echo $category['id']; ?>" data-type="<?php echo $category['type']; ?>">
-                                            <?php echo htmlspecialchars($category['name']); ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                        </div>
+                        <select name="account_id" class="form-select mb-2" required>
+                            <option value="">Выберите счет</option>
+                            <?php foreach ($accounts as $a): ?>
+                                <option value="<?php echo $a['id']; ?>" data-balance="<?php echo $a['current_balance']; ?>">
+                                    <?php echo htmlspecialchars($a['bank_name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                         
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="amount" class="form-label">Сумма *</label>
-                                <input type="number" class="form-control" id="amount" name="amount" step="0.01" required>
-                                <small class="text-muted" id="balance_warning" style="display: none; color: #dc3545;"></small>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="transaction_date" class="form-label">Дата *</label>
-                                <input type="date" class="form-control" id="transaction_date" name="transaction_date" value="<?php echo date('Y-m-d'); ?>" required>
-                            </div>
-                        </div>
+                        <select name="category_id" class="form-select mb-2" required>
+                            <option value="">Выберите категорию</option>
+                            <?php foreach ($categories as $c): ?>
+                                <option value="<?php echo $c['id']; ?>" data-type="<?php echo $c['type']; ?>">
+                                    <?php echo htmlspecialchars($c['name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                         
-                        <div class="mb-3">
-                            <label for="description" class="form-label">Описание</label>
-                            <textarea class="form-control" id="description" name="description" rows="2"></textarea>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label">Метки</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" id="tags_text" name="tags_text" placeholder="Метки через точку с запятой (например: еда;ресторан)">
-                                <button type="button" class="btn btn-outline-secondary" onclick="openTagsModal()">
-                                    <i class="bi bi-tags"></i> Выбрать метки
-                                </button>
-                            </div>
-                            <small class="text-muted">Введите метки через точку с запятой или выберите из списка</small>
-                        </div>
+                        <input type="number" name="amount" class="form-control mb-2" placeholder="Сумма" step="0.01" required>
+                        <input type="date" name="transaction_date" class="form-control mb-2" value="<?php echo date('Y-m-d'); ?>" required>
+                        <textarea name="description" class="form-control mb-2" rows="2" placeholder="Описание"></textarea>
+                        <input type="text" name="tags_text" id="tagsInput" class="form-control" placeholder="Метки (через ;)">
+                        <button type="button" class="btn btn-outline-secondary mt-2 w-100" id="selectTagsBtn">Выбрать метки</button>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
                         <button type="submit" name="add_transaction" class="btn btn-primary" id="submitBtn">Добавить</button>
                     </div>
                 </form>
@@ -647,60 +651,38 @@ $balance = $total_income - $total_expense;
         </div>
     </div>
     
-    <!-- Tags Selection Modal -->
-    <div class="modal fade" id="tagsModal" tabindex="-1">
+    <!-- Tags Modal -->
+    <div class="modal fade" id="tagsSelectModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-tags"></i> Выбор меток</h5>
+                    <h5>Выберите метки</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <?php if (count($tags) > 0): ?>
-                        <div class="tags-modal-container" id="tagsContainer">
-                            <div class="row">
-                                <?php foreach ($tags as $tag): ?>
-                                    <div class="col-md-6 mb-2">
-                                        <div class="tag-selector p-2 border rounded" data-tag-name="<?php echo htmlspecialchars($tag['name']); ?>" onclick="toggleTagSelection(this)">
-                                            <div class="d-flex align-items-center">
-                                                <div style="width: 20px; height: 20px; background-color: <?php echo htmlspecialchars($tag['color']); ?>; border-radius: 4px; margin-right: 10px;"></div>
-                                                <span><?php echo htmlspecialchars($tag['name']); ?></span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                    <?php else: ?>
-                        <p class="text-center text-muted">Нет добавленных меток. Создайте метки в разделе "Банк Меток".</p>
-                    <?php endif; ?>
+                    <div class="tags-grid" id="tagsGrid"></div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" onclick="applySelectedTags()">Применить</button>
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                    <button type="button" class="btn btn-primary" id="confirmTagsBtn">Применить</button>
                 </div>
             </div>
         </div>
     </div>
     
-    <!-- Delete Transaction Modal -->
-    <div class="modal fade" id="deleteTransactionModal" tabindex="-1">
+    <!-- Delete Modal -->
+    <div class="modal fade" id="deleteModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle"></i> Удаление операции</h5>
+                    <h5>Удалить операцию?</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <form method="POST" action="" id="deleteForm">
+                <form method="POST">
                     <div class="modal-body">
-                        <input type="hidden" name="transaction_id" id="delete_transaction_id">
-                        <p>Вы уверены, что хотите удалить операцию <strong id="delete_transaction_desc"></strong>?</p>
-                        <div class="alert alert-warning">
-                            <i class="bi bi-exclamation-triangle"></i> Внимание! Удаление операции изменит баланс счета.
-                        </div>
+                        <input type="hidden" name="transaction_id" id="deleteId">
+                        <p>Вы уверены?</p>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
                         <button type="submit" name="delete_transaction" class="btn btn-danger">Удалить</button>
                     </div>
                 </form>
@@ -710,205 +692,138 @@ $balance = $total_income - $total_expense;
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        let currentTransactionModal = null;
-        let currentTagsModal = null;
-        let currentDeleteModal = null;
-        let selectedTags = [];
-        
-        // Инициализация модальных окон
+        // Ждем загрузки страницы
         document.addEventListener('DOMContentLoaded', function() {
-            currentTransactionModal = new bootstrap.Modal(document.getElementById('transactionModal'));
-            currentTagsModal = new bootstrap.Modal(document.getElementById('tagsModal'));
-            currentDeleteModal = new bootstrap.Modal(document.getElementById('deleteTransactionModal'));
-        });
-        
-        // Открытие модального окна добавления
-        function openAddTransactionModal() {
-            resetTransactionForm();
-            currentTransactionModal.show();
-        }
-        
-        // Установка типа операции
-        function setTransactionType(type) {
-            document.getElementById('transaction_type').value = type;
-            const expenseBtn = document.getElementById('expenseTypeBtn');
-            const incomeBtn = document.getElementById('incomeTypeBtn');
+            console.log('Страница загружена');
             
-            if (type === 'expense') {
-                expenseBtn.classList.remove('btn-outline-danger');
-                expenseBtn.classList.add('btn-danger', 'active-expense');
-                incomeBtn.classList.remove('btn-success', 'active-income');
-                incomeBtn.classList.add('btn-outline-success');
-            } else {
-                incomeBtn.classList.remove('btn-outline-success');
-                incomeBtn.classList.add('btn-success', 'active-income');
-                expenseBtn.classList.remove('btn-danger', 'active-expense');
-                expenseBtn.classList.add('btn-outline-danger');
-            }
+            // Модальные окна
+            const filterModal = new bootstrap.Modal(document.getElementById('filterModal'));
+            const transactionModal = new bootstrap.Modal(document.getElementById('transactionModal'));
+            const tagsModal = new bootstrap.Modal(document.getElementById('tagsSelectModal'));
+            const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
             
-            filterCategoriesByType(type);
-            checkBalance();
-        }
-        
-        // Фильтрация категорий
-        function filterCategoriesByType(type) {
-            const categorySelect = document.getElementById('category_id');
-            const options = categorySelect.options;
+            // Кнопки
+            document.getElementById('filterBtn').onclick = function() {
+                filterModal.show();
+            };
             
-            for (let i = 0; i < options.length; i++) {
-                const option = options[i];
-                if (option.value === '') continue;
-                
-                const categoryType = option.getAttribute('data-type');
-                if (categoryType === type) {
-                    option.style.display = '';
-                } else {
-                    option.style.display = 'none';
-                }
-            }
+            document.getElementById('addBtn').onclick = function() {
+                document.getElementById('modalTitle').innerText = 'Добавить операцию';
+                document.getElementById('transactionForm').reset();
+                document.getElementById('transId').value = '';
+                document.getElementById('submitBtn').name = 'add_transaction';
+                document.getElementById('submitBtn').innerHTML = 'Добавить';
+                setType('expense');
+                transactionModal.show();
+            };
             
-            categorySelect.value = '';
-        }
-        
-        // Проверка баланса
-        function checkBalance() {
-            const accountSelect = document.getElementById('account_id');
-            const amountInput = document.getElementById('amount');
-            const balanceWarning = document.getElementById('balance_warning');
-            const transactionType = document.getElementById('transaction_type').value;
+            document.getElementById('selectTagsBtn').onclick = function() {
+                loadTags();
+                tagsModal.show();
+            };
             
-            if (accountSelect && amountInput && balanceWarning && transactionType === 'expense') {
-                const selectedOption = accountSelect.options[accountSelect.selectedIndex];
-                const balance = selectedOption.getAttribute('data-balance');
-                const amount = parseFloat(amountInput.value);
-                
-                if (balance && amount && !isNaN(amount) && amount > parseFloat(balance)) {
-                    balanceWarning.style.display = 'block';
-                    balanceWarning.textContent = `Недостаточно средств! Доступно: ${parseFloat(balance).toLocaleString('ru-RU', {minimumFractionDigits: 2})} ₽`;
-                    return false;
-                } else {
-                    balanceWarning.style.display = 'none';
-                    return true;
-                }
-            }
-            return true;
-        }
-        
-        // Редактирование операции
-        function editTransaction(transaction) {
-            document.getElementById('transactionModalTitle').textContent = 'Редактировать операцию';
-            document.getElementById('transaction_id').value = transaction.id;
-            document.getElementById('transaction_type').value = transaction.type;
-            document.getElementById('account_id').value = transaction.account_id;
-            document.getElementById('amount').value = transaction.amount;
-            document.getElementById('transaction_date').value = transaction.transaction_date;
-            document.getElementById('description').value = transaction.description || '';
-            document.getElementById('tags_text').value = transaction.tags_text || '';
+            document.getElementById('confirmTagsBtn').onclick = function() {
+                const selected = Array.from(document.querySelectorAll('#tagsGrid .tag-option.selected'))
+                    .map(el => el.getAttribute('data-name'));
+                document.getElementById('tagsInput').value = selected.join('; ');
+                tagsModal.hide();
+            };
             
-            setTransactionType(transaction.type);
+            // Кнопки типа
+            document.getElementById('expenseBtn').onclick = function() { setType('expense'); };
+            document.getElementById('incomeBtn').onclick = function() { setType('income'); };
             
-            const categorySelect = document.getElementById('category_id');
-            for (let i = 0; i < categorySelect.options.length; i++) {
-                if (categorySelect.options[i].value == transaction.category_id) {
-                    categorySelect.value = transaction.category_id;
-                    break;
-                }
-            }
-            
-            const submitBtn = document.getElementById('submitBtn');
-            submitBtn.name = 'edit_transaction';
-            submitBtn.innerHTML = '<i class="bi bi-save"></i> Сохранить изменения';
-            
-            currentTransactionModal.show();
-        }
-        
-        // Сброс формы
-        function resetTransactionForm() {
-            document.getElementById('transactionForm').reset();
-            document.getElementById('transaction_id').value = '';
-            document.getElementById('transaction_type').value = 'expense';
-            document.getElementById('transaction_date').value = '<?php echo date('Y-m-d'); ?>';
-            document.getElementById('transactionModalTitle').textContent = 'Добавить операцию';
-            
-            setTransactionType('expense');
-            
-            const submitBtn = document.getElementById('submitBtn');
-            submitBtn.name = 'add_transaction';
-            submitBtn.innerHTML = '<i class="bi bi-plus-circle"></i> Добавить';
-            
-            const balanceWarning = document.getElementById('balance_warning');
-            if (balanceWarning) balanceWarning.style.display = 'none';
-        }
-        
-        // Открытие модального окна с метками
-        function openTagsModal() {
-            // Сбрасываем выделение
-            document.querySelectorAll('.tag-selector').forEach(el => {
-                el.classList.remove('selected');
+            // Карточки транзакций
+            document.querySelectorAll('.transaction-card').forEach(card => {
+                card.onclick = function(e) {
+                    e.stopPropagation();
+                    const id = this.getAttribute('data-id');
+                    const type = this.getAttribute('data-type');
+                    const account = this.getAttribute('data-account');
+                    const category = this.getAttribute('data-category');
+                    const amount = this.getAttribute('data-amount');
+                    const date = this.getAttribute('data-date');
+                    const desc = this.getAttribute('data-desc');
+                    const tags = this.getAttribute('data-tags');
+                    
+                    document.getElementById('modalTitle').innerText = 'Редактировать операцию';
+                    document.getElementById('transId').value = id;
+                    document.getElementById('transType').value = type;
+                    document.querySelector('select[name="account_id"]').value = account;
+                    document.querySelector('select[name="category_id"]').value = category;
+                    document.querySelector('input[name="amount"]').value = amount;
+                    document.querySelector('input[name="transaction_date"]').value = date;
+                    document.querySelector('textarea[name="description"]').value = desc;
+                    document.querySelector('input[name="tags_text"]').value = tags;
+                    document.getElementById('submitBtn').name = 'edit_transaction';
+                    document.getElementById('submitBtn').innerHTML = 'Сохранить';
+                    setType(type);
+                    transactionModal.show();
+                };
             });
             
-            // Выделяем уже выбранные метки
-            const currentTags = document.getElementById('tags_text').value.split(';').map(t => t.trim()).filter(t => t);
-            document.querySelectorAll('.tag-selector').forEach(el => {
-                const tagName = el.getAttribute('data-tag-name');
-                if (currentTags.includes(tagName)) {
-                    el.classList.add('selected');
+            function setType(type) {
+                document.getElementById('transType').value = type;
+                const expenseBtn = document.getElementById('expenseBtn');
+                const incomeBtn = document.getElementById('incomeBtn');
+                
+                if (type === 'expense') {
+                    expenseBtn.classList.add('active-expense');
+                    incomeBtn.classList.remove('active-income');
+                } else {
+                    incomeBtn.classList.add('active-income');
+                    expenseBtn.classList.remove('active-expense');
                 }
-            });
-            
-            selectedTags = [...currentTags];
-            currentTagsModal.show();
-        }
-        
-        // Переключение выбора метки
-        function toggleTagSelection(element) {
-            const tagName = element.getAttribute('data-tag-name');
-            if (element.classList.contains('selected')) {
-                element.classList.remove('selected');
-                selectedTags = selectedTags.filter(tag => tag !== tagName);
-            } else {
-                element.classList.add('selected');
-                selectedTags.push(tagName);
-            }
-        }
-        
-        // Применить выбранные метки
-        function applySelectedTags() {
-            const tagsInput = document.getElementById('tags_text');
-            tagsInput.value = selectedTags.join('; ');
-            currentTagsModal.hide();
-        }
-        
-        // Удаление операции
-        function deleteTransaction(transactionId, description) {
-            document.getElementById('delete_transaction_id').value = transactionId;
-            document.getElementById('delete_transaction_desc').textContent = description;
-            currentDeleteModal.show();
-        }
-        
-        // Обработчики событий
-        document.getElementById('account_id')?.addEventListener('change', checkBalance);
-        document.getElementById('amount')?.addEventListener('input', checkBalance);
-        
-        // Предотвращение отправки формы при некорректных данных
-        document.getElementById('transactionForm')?.addEventListener('submit', function(e) {
-            if (!checkBalance()) {
-                e.preventDefault();
-                alert('Недостаточно средств на счете!');
-                return false;
+                
+                // Фильтруем категории
+                const categorySelect = document.querySelector('select[name="category_id"]');
+                for (let i = 0; i < categorySelect.options.length; i++) {
+                    const opt = categorySelect.options[i];
+                    if (opt.value === '') continue;
+                    const optType = opt.getAttribute('data-type');
+                    opt.style.display = optType === type ? '' : 'none';
+                }
+                categorySelect.value = '';
             }
             
-            const accountId = document.getElementById('account_id').value;
-            const categoryId = document.getElementById('category_id').value;
-            const amount = document.getElementById('amount').value;
-            
-            if (!accountId || !categoryId || !amount || amount <= 0) {
-                e.preventDefault();
-                alert('Пожалуйста, заполните все обязательные поля!');
-                return false;
+            function loadTags() {
+                const tags = <?php echo json_encode(array_column($tags, 'name')); ?>;
+                const currentTags = document.getElementById('tagsInput').value.split(';').map(t => t.trim()).filter(t => t);
+                
+                const grid = document.getElementById('tagsGrid');
+                grid.innerHTML = '';
+                
+                tags.forEach(tag => {
+                    const div = document.createElement('div');
+                    div.className = 'tag-option';
+                    if (currentTags.includes(tag)) div.classList.add('selected');
+                    div.setAttribute('data-name', tag);
+                    div.innerHTML = tag;
+                    div.onclick = function() {
+                        this.classList.toggle('selected');
+                    };
+                    grid.appendChild(div);
+                });
             }
             
-            return true;
+            // Проверка баланса
+            const accountSelect = document.querySelector('select[name="account_id"]');
+            const amountInput = document.querySelector('input[name="amount"]');
+            
+            function checkBalance() {
+                const type = document.getElementById('transType').value;
+                if (type === 'expense' && accountSelect.value) {
+                    const balance = accountSelect.options[accountSelect.selectedIndex].getAttribute('data-balance');
+                    const amount = parseFloat(amountInput.value);
+                    if (amount && amount > parseFloat(balance)) {
+                        alert('Недостаточно средств!');
+                        amountInput.value = '';
+                    }
+                }
+            }
+            
+            if (accountSelect) accountSelect.onchange = checkBalance;
+            if (amountInput) amountInput.oninput = checkBalance;
         });
     </script>
 </body>
