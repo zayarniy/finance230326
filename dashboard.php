@@ -473,14 +473,14 @@ $top_categories = $stmt->fetchAll();
         <div class="row g-2 mt-3">
             <div class="col-6">
                 <div class="bg-white bg-opacity-20 rounded-3 p-2 text-center">
-                    <small class="d-block opacity-75">Общий баланс</small>
-                    <strong class="fs-5"><?php echo number_format($total_balance_all, 0, '.', ' '); ?> ₽</strong>
+                    <small class="d-block opacity-75 text-dark">Общий баланс</small>
+                    <strong class="fs-5 text-dark"><?php echo number_format($total_balance_all, 0, '.', ' '); ?> ₽</strong>
                 </div>
             </div>
             <div class="col-6">
                 <div class="bg-white bg-opacity-20 rounded-3 p-2 text-center">
-                    <small class="d-block opacity-75">Сумма счетов</small>
-                    <strong class="fs-5"><?php echo number_format($total_balance, 0, '.', ' '); ?> ₽</strong>
+                    <small class="d-block opacity-75 text-dark">Сумма счетов</small>
+                    <strong class="fs-5 text-dark"><?php echo number_format($total_balance, 0, '.', ' '); ?> ₽</strong>
                 </div>
             </div>
         </div>
