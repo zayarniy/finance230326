@@ -10,7 +10,6 @@ if (!isset($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 $message = '';
 $error = '';
-$edit_tag = null;
 
 // Обработка действий
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -23,13 +22,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $stmt = $pdo->prepare("INSERT INTO tags (user_id, name, color) VALUES (?, ?, ?)");
                 $stmt->execute([$user_id, $name, $color]);
-                $message = "Метка успешно добавлена";
+                header("Location: tags.php");
+                exit;
             } catch (PDOException $e) {
-                if ($e->getCode() == 23000) {
-                    $error = "Метка с таким названием уже существует";
-                } else {
-                    $error = "Ошибка при добавлении метки";
-                }
+                $error = "Метка с таким названием уже существует";
             }
         } else {
             $error = "Введите название метки";
@@ -46,13 +42,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $stmt = $pdo->prepare("UPDATE tags SET name = ?, color = ? WHERE id = ? AND user_id = ?");
                 $stmt->execute([$name, $color, $tag_id, $user_id]);
-                $message = "Метка успешно обновлена";
+                header("Location: tags.php");
+                exit;
             } catch (PDOException $e) {
-                if ($e->getCode() == 23000) {
-                    $error = "Метка с таким названием уже существует";
-                } else {
-                    $error = "Ошибка при обновлении метки";
-                }
+                $error = "Метка с таким названием уже существует";
             }
         } else {
             $error = "Введите название метки";
@@ -66,7 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($tag_id > 0) {
             $stmt = $pdo->prepare("DELETE FROM tags WHERE id = ? AND user_id = ?");
             $stmt->execute([$tag_id, $user_id]);
-            $message = "Метка успешно удалена";
+            header("Location: tags.php");
+            exit;
         }
     }
 }
@@ -76,374 +70,382 @@ $stmt = $pdo->prepare("SELECT * FROM tags WHERE user_id = ? ORDER BY name ASC");
 $stmt->execute([$user_id]);
 $tags = $stmt->fetchAll();
 
-// Если нужно редактировать - получаем данные
-if (isset($_GET['edit'])) {
-    $edit_id = $_GET['edit'];
-    $stmt = $pdo->prepare("SELECT * FROM tags WHERE id = ? AND user_id = ?");
-    $stmt->execute([$edit_id, $user_id]);
-    $edit_tag = $stmt->fetch();
+// Подсчет использования меток
+$tag_usage = [];
+$stmt = $pdo->prepare("SELECT tags_text FROM transactions WHERE user_id = ?");
+$stmt->execute([$user_id]);
+$transactions = $stmt->fetchAll();
+
+foreach ($transactions as $t) {
+    if (!empty($t['tags_text'])) {
+        $tags_list = explode(';', $t['tags_text']);
+        foreach ($tags_list as $tag_name) {
+            $tag_name = trim($tag_name);
+            if (!empty($tag_name)) {
+                $tag_usage[$tag_name] = ($tag_usage[$tag_name] ?? 0) + 1;
+            }
+        }
+    }
 }
 ?>
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Банк Меток - Финансовый дневник</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="theme-color" content="#667eea">
+    <title>Метки - Финансовый дневник</title>
+    <link rel="icon" type="image/png" href="../favicon.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
-        .sidebar {
-            min-height: 100vh;
+        * { -webkit-tap-highlight-color: transparent; }
+        body { background: #f8f9fa; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding-bottom: 70px; }
+        
+        .mobile-header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .sidebar .nav-link {
-            color: rgba(255,255,255,0.8);
-            padding: 12px 20px;
-            margin: 5px 0;
-            border-radius: 10px;
-            transition: all 0.3s;
-        }
-        .sidebar .nav-link:hover, .sidebar .nav-link.active {
-            background: rgba(255,255,255,0.1);
             color: white;
-            transform: translateX(5px);
+            padding: 20px 16px;
+            border-radius: 0 0 24px 24px;
+            margin-bottom: 16px;
         }
-        .sidebar .nav-link i {
-            margin-right: 10px;
+        
+        .back-button {
+            background: rgba(255,255,255,0.2);
+            border-radius: 30px;
+            padding: 8px 16px;
+            color: white;
+            text-decoration: none;
+            font-size: 14px;
+            display: inline-block;
         }
-        .main-content {
-            background-color: #f8f9fa;
-            min-height: 100vh;
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            padding: 0 16px;
+            margin-bottom: 20px;
         }
+        
+        .stat-card {
+            background: white;
+            border-radius: 20px;
+            padding: 16px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        
+        .stat-value { font-size: 32px; font-weight: bold; margin: 8px 0; }
+        
+        .tags-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            padding: 0 16px;
+            margin-bottom: 20px;
+        }
+        
         .tag-card {
-            border-radius: 12px;
-            transition: all 0.3s;
+            background: white;
+            border-radius: 20px;
+            padding: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
             cursor: pointer;
-            border: 2px solid transparent;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
         }
-        .tag-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
+        
+        .tag-card:active { transform: scale(0.98); }
+        
         .tag-color {
             width: 40px;
             height: 40px;
-            border-radius: 8px;
-            margin-right: 12px;
-        }
-        .tag-actions {
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-        .tag-card:hover .tag-actions {
-            opacity: 1;
-        }
-        .btn-icon {
-            padding: 4px 8px;
-            font-size: 12px;
-        }
-        .stats-badge {
-            background: #e9ecef;
-            padding: 4px 12px;
             border-radius: 20px;
+            margin-bottom: 12px;
+        }
+        
+        .tag-name {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            word-break: break-word;
+        }
+        
+        .tag-usage {
+            font-size: 11px;
+            color: #6c757d;
+        }
+        
+        .tag-actions {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            display: flex;
+            gap: 8px;
+            opacity: 0.7;
+        }
+        
+        .tag-actions button {
+            background: white;
+            border: none;
+            border-radius: 20px;
+            padding: 6px 10px;
             font-size: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .fab {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            width: 56px;
+            height: 56px;
+            border-radius: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(102,126,234,0.4);
+            cursor: pointer;
+            z-index: 1000;
+        }
+        
+        .fab:active { transform: scale(0.95); }
+        .fab i { font-size: 24px; color: white; }
+        
+        .mobile-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            padding: 8px 0;
+            z-index: 1000;
+        }
+        
+        .mobile-nav .nav-item {
+            text-align: center;
+            padding: 8px 0;
+            color: #6c757d;
+            text-decoration: none;
+            display: block;
+        }
+        
+        .mobile-nav .nav-item.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .mobile-nav .nav-item i { font-size: 22px; display: block; margin-bottom: 4px; }
+        .mobile-nav .nav-item span { font-size: 11px; }
+        
+        .modal-content { border-radius: 24px 24px 0 0; }
+        .form-control, .form-select { border-radius: 30px; padding: 12px 16px; }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+        }
+        
+        .empty-state i { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
+        
+        .color-preview {
+            width: 40px;
+            height: 40px;
+            border-radius: 20px;
+            border: 2px solid #e9ecef;
         }
     </style>
 </head>
 <body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Sidebar -->
-            <div class="col-md-2 p-0">
-                <div class="sidebar">
-                    <div class="text-center py-4">
-                        <i class="bi bi-wallet2" style="font-size: 48px; color: white;"></i>
-                        <h5 class="text-white mt-2"><?php echo htmlspecialchars($_SESSION['username']); ?></h5>
-                        <small class="text-white-50">Финансовый дневник</small>
+    <div class="mobile-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <a href="../dashboard.php" class="back-button">← Назад</a>
+            <div></div>
+        </div>
+        <div class="page-title fs-3 fw-bold mt-2">Метки</div>
+        <div class="small">Управление метками для операций</div>
+    </div>
+    
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div>🏷️</div>
+            <div class="stat-value"><?php echo count($tags); ?></div>
+            <div class="small text-muted">Всего меток</div>
+        </div>
+        <div class="stat-card">
+            <div>📊</div>
+            <div class="stat-value"><?php echo count($tag_usage); ?></div>
+            <div class="small text-muted">Используется</div>
+        </div>
+    </div>
+    
+    <div class="tags-grid">
+        <?php if (count($tags) > 0): ?>
+            <?php foreach ($tags as $tag): ?>
+                <div class="tag-card" data-id="<?php echo $tag['id']; ?>" data-name="<?php echo htmlspecialchars($tag['name']); ?>" data-color="<?php echo $tag['color']; ?>">
+                    <div class="tag-color" style="background-color: <?php echo $tag['color']; ?>;"></div>
+                    <div class="tag-name"><?php echo htmlspecialchars($tag['name']); ?></div>
+                    <div class="tag-usage">
+                        <i class="bi bi-hash"></i> <?php echo $tag_usage[$tag['name']] ?? 0; ?> операций
                     </div>
-                    <nav class="nav flex-column px-3">
-                        <a class="nav-link" href="../dashboard.php">
-                            <i class="bi bi-speedometer2"></i> Дашборд
-                        </a>
-                        <a class="nav-link active" href="tags.php">
-                            <i class="bi bi-tags"></i> Банк Меток
-                        </a>
-                        <a class="nav-link" href="categories.php">
-                            <i class="bi bi-grid"></i> Банк Категорий
-                        </a>
-                        <a class="nav-link" href="accounts.php">
-                            <i class="bi bi-bank"></i> Справочник Счетов
-                        </a>
-                        <a class="nav-link" href="finances.php">
-                            <i class="bi bi-calculator"></i> Финансы
-                        </a>
-                        <a class="nav-link" href="transfers.php">
-                            <i class="bi bi-arrow-left-right"></i> Переводы
-                        </a>
-                        <a class="nav-link" href="statistics.php">
-                            <i class="bi bi-graph-up"></i> Статистика
-                        </a>
-                        <hr class="bg-light">
-                        <a class="nav-link" href="../profile.php">
-                            <i class="bi bi-person-circle"></i> Профиль
-                        </a>
-                        <a class="nav-link" href="../logout.php">
-                            <i class="bi bi-box-arrow-right"></i> Выход
-                        </a>
-                    </nav>
-                </div>
-            </div>
-            
-            <!-- Main Content -->
-            <div class="col-md-10 p-0">
-                <div class="main-content">
-                    <div class="p-4">
-                        <!-- Header -->
-                        <div class="d-flex justify-content-between align-items-center mb-4">
-                            <div>
-                                <h2><i class="bi bi-tags"></i> Банк Меток</h2>
-                                <p class="text-muted">Управление метками для финансовых операций</p>
-                            </div>
-                            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTagModal">
-                                <i class="bi bi-plus-circle"></i> Добавить метку
-                            </button>
-                        </div>
-                        
-                        <!-- Messages -->
-                        <?php if ($message): ?>
-                            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                <i class="bi bi-check-circle"></i> <?php echo htmlspecialchars($message); ?>
-                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                            </div>
-                        <?php endif; ?>
-                        
-                        <?php if ($error): ?>
-                            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                                <i class="bi bi-exclamation-triangle"></i> <?php echo htmlspecialchars($error); ?>
-                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                            </div>
-                        <?php endif; ?>
-                        
-                        <!-- Statistics -->
-                        <div class="row mb-4">
-                            <div class="col-md-3">
-                                <div class="card bg-primary text-white">
-                                    <div class="card-body">
-                                        <h6 class="card-title">Всего меток</h6>
-                                        <h3 class="mb-0"><?php echo count($tags); ?></h3>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="card bg-info text-white">
-                                    <div class="card-body">
-                                        <h6 class="card-title">Используется в операциях</h6>
-                                        <h3 class="mb-0" id="usedTagsCount">0</h3>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Tags Grid -->
-                        <div class="row">
-                            <?php if (count($tags) > 0): ?>
-                                <?php foreach ($tags as $tag): ?>
-                                    <div class="col-md-3 col-sm-6 mb-3">
-                                        <div class="card tag-card h-100">
-                                            <div class="card-body">
-                                                <div class="d-flex align-items-start justify-content-between">
-                                                    <div class="d-flex align-items-center">
-                                                        <div class="tag-color" style="background-color: <?php echo htmlspecialchars($tag['color']); ?>;"></div>
-                                                        <div>
-                                                            <h6 class="mb-0"><?php echo htmlspecialchars($tag['name']); ?></h6>
-                                                            <small class="text-muted">ID: <?php echo $tag['id']; ?></small>
-                                                        </div>
-                                                    </div>
-                                                    <div class="tag-actions">
-                                                        <div class="btn-group btn-group-sm">
-                                                            <a href="?edit=<?php echo $tag['id']; ?>" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editTagModal" data-tag-id="<?php echo $tag['id']; ?>" data-tag-name="<?php echo htmlspecialchars($tag['name']); ?>" data-tag-color="<?php echo htmlspecialchars($tag['color']); ?>">
-                                                                <i class="bi bi-pencil"></i>
-                                                            </a>
-                                                            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteTagModal" data-tag-id="<?php echo $tag['id']; ?>" data-tag-name="<?php echo htmlspecialchars($tag['name']); ?>">
-                                                                <i class="bi bi-trash"></i>
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="mt-3">
-                                                    <span class="stats-badge">
-                                                        <i class="bi bi-hash"></i> <?php echo rand(0, 15); ?> операций
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                <?php endforeach; ?>
-                            <?php else: ?>
-                                <div class="col-12">
-                                    <div class="alert alert-info text-center">
-                                        <i class="bi bi-info-circle fs-1"></i>
-                                        <h5>Нет добавленных меток</h5>
-                                        <p>Нажмите кнопку "Добавить метку" чтобы создать первую метку</p>
-                                    </div>
-                                </div>
-                            <?php endif; ?>
-                        </div>
+                    <div class="tag-actions">
+                        <button class="edit-tag" data-id="<?php echo $tag['id']; ?>" data-name="<?php echo htmlspecialchars($tag['name']); ?>" data-color="<?php echo $tag['color']; ?>">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="delete-tag" data-id="<?php echo $tag['id']; ?>" data-name="<?php echo htmlspecialchars($tag['name']); ?>">
+                            <i class="bi bi-trash"></i>
+                        </button>
                     </div>
                 </div>
+            <?php endforeach; ?>
+        <?php else: ?>
+            <div class="empty-state" style="grid-column: span 2;">
+                <i class="bi bi-tags"></i>
+                <h5>Нет меток</h5>
+                <p class="small">Создайте первую метку, нажав на кнопку +</p>
             </div>
+        <?php endif; ?>
+    </div>
+    
+    <div class="fab" id="addTagBtn"><i class="bi bi-plus-lg"></i></div>
+    
+    <div class="mobile-nav">
+        <div class="row g-0">
+            <div class="col-3"><a href="../dashboard.php" class="nav-item"><i class="bi bi-house-door"></i><span>Главная</span></a></div>
+            <div class="col-3"><a href="finances.php" class="nav-item"><i class="bi bi-calculator"></i><span>Финансы</span></a></div>
+            <div class="col-3"><a href="accounts.php" class="nav-item"><i class="bi bi-bank"></i><span>Счета</span></a></div>
+            <div class="col-3"><a href="tags.php" class="nav-item active"><i class="bi bi-tags-fill"></i><span>Метки</span></a></div>
         </div>
     </div>
     
     <!-- Add Tag Modal -->
     <div class="modal fade" id="addTagModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Добавить метку</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <div class="modal-dialog"><div class="modal-content">
+            <div class="modal-header"><h5>Добавить метку</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <form method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Название метки</label>
+                        <input type="text" name="tag_name" class="form-control" required maxlength="50" placeholder="например: важное, срочно, семья">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Цвет</label>
+                        <div class="d-flex align-items-center gap-3">
+                            <input type="color" name="tag_color" class="form-control form-control-color w-25" value="#6c757d">
+                            <div class="color-preview" id="colorPreview" style="background-color: #6c757d;"></div>
+                        </div>
+                    </div>
                 </div>
-                <form method="POST" action="">
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label for="tag_name" class="form-label">Название метки *</label>
-                            <input type="text" class="form-control" id="tag_name" name="tag_name" required maxlength="50">
-                            <small class="text-muted">Максимум 50 символов</small>
-                        </div>
-                        <div class="mb-3">
-                            <label for="tag_color" class="form-label">Цвет метки</label>
-                            <div class="d-flex align-items-center">
-                                <input type="color" class="form-control form-control-color w-25 me-2" id="tag_color" name="tag_color" value="#6c757d">
-                                <span class="text-muted">Выберите цвет для визуального выделения</span>
-                            </div>
-                        </div>
-                        <div class="alert alert-info">
-                            <i class="bi bi-info-circle"></i> Метки помогут группировать операции по темам. Например: "еда", "транспорт", "развлечения"
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="submit" name="add_tag" class="btn btn-primary">Добавить</button>
-                    </div>
-                </form>
-            </div>
-        </div>
+                <div class="modal-footer"><button type="submit" name="add_tag" class="btn btn-primary w-100 rounded-pill">Добавить</button></div>
+            </form>
+        </div></div>
     </div>
     
     <!-- Edit Tag Modal -->
     <div class="modal fade" id="editTagModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Редактировать метку</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <div class="modal-dialog"><div class="modal-content">
+            <div class="modal-header"><h5>Редактировать метку</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="tag_id" id="editTagId">
+                    <div class="mb-3">
+                        <label class="form-label">Название метки</label>
+                        <input type="text" name="tag_name" id="editTagName" class="form-control" required maxlength="50">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Цвет</label>
+                        <div class="d-flex align-items-center gap-3">
+                            <input type="color" name="tag_color" id="editTagColor" class="form-control form-control-color w-25">
+                            <div class="color-preview" id="editColorPreview"></div>
+                        </div>
+                    </div>
                 </div>
-                <form method="POST" action="">
-                    <div class="modal-body">
-                        <input type="hidden" id="edit_tag_id" name="tag_id">
-                        <div class="mb-3">
-                            <label for="edit_tag_name" class="form-label">Название метки *</label>
-                            <input type="text" class="form-control" id="edit_tag_name" name="tag_name" required maxlength="50">
-                        </div>
-                        <div class="mb-3">
-                            <label for="edit_tag_color" class="form-label">Цвет метки</label>
-                            <div class="d-flex align-items-center">
-                                <input type="color" class="form-control form-control-color w-25 me-2" id="edit_tag_color" name="tag_color">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="submit" name="edit_tag" class="btn btn-primary">Сохранить</button>
-                    </div>
-                </form>
-            </div>
-        </div>
+                <div class="modal-footer"><button type="submit" name="edit_tag" class="btn btn-primary w-100 rounded-pill">Сохранить</button></div>
+            </form>
+        </div></div>
     </div>
     
     <!-- Delete Tag Modal -->
     <div class="modal fade" id="deleteTagModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle"></i> Удаление метки</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <div class="modal-dialog"><div class="modal-content">
+            <div class="modal-header"><h5>Удалить метку?</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="tag_id" id="deleteTagId">
+                    <p>Удалить метку <strong id="deleteTagName"></strong>?</p>
+                    <div class="alert alert-warning small">
+                        <i class="bi bi-exclamation-triangle"></i> Метка останется в операциях, но пропадет из списка
+                    </div>
                 </div>
-                <form method="POST" action="">
-                    <div class="modal-body">
-                        <input type="hidden" id="delete_tag_id" name="tag_id">
-                        <p>Вы уверены, что хотите удалить метку <strong id="delete_tag_name"></strong>?</p>
-                        <div class="alert alert-warning">
-                            <i class="bi bi-exclamation-triangle"></i> Внимание! Удаление метки не повлияет на существующие операции, но метка перестанет быть доступной для выбора.
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="submit" name="delete_tag" class="btn btn-danger">Удалить</button>
-                    </div>
-                </form>
-            </div>
-        </div>
+                <div class="modal-footer"><button type="submit" name="delete_tag" class="btn btn-danger w-100 rounded-pill">Удалить</button></div>
+            </form>
+        </div></div>
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Подсчет использованных меток (имитация, так как в реальности нужно будет делать запрос)
         document.addEventListener('DOMContentLoaded', function() {
-            // Здесь можно сделать AJAX запрос для подсчета реального количества использований меток
-            // Для демонстрации показываем случайные числа
-            const statsBadges = document.querySelectorAll('.stats-badge');
-            statsBadges.forEach(badge => {
-                const count = Math.floor(Math.random() * 20);
-                badge.innerHTML = `<i class="bi bi-hash"></i> ${count} операций`;
+            const addModal = new bootstrap.Modal(document.getElementById('addTagModal'));
+            const editModal = new bootstrap.Modal(document.getElementById('editTagModal'));
+            const deleteModal = new bootstrap.Modal(document.getElementById('deleteTagModal'));
+            
+            // Кнопка добавления
+            document.getElementById('addTagBtn').onclick = () => addModal.show();
+            
+            // Предпросмотр цвета при добавлении
+            const colorInput = document.querySelector('#addTagModal input[name="tag_color"]');
+            const colorPreview = document.getElementById('colorPreview');
+            if (colorInput && colorPreview) {
+                colorInput.oninput = function() {
+                    colorPreview.style.backgroundColor = this.value;
+                };
+            }
+            
+            // Редактирование метки
+            document.querySelectorAll('.edit-tag').forEach(btn => {
+                btn.onclick = function(e) {
+                    e.stopPropagation();
+                    document.getElementById('editTagId').value = this.dataset.id;
+                    document.getElementById('editTagName').value = this.dataset.name;
+                    document.getElementById('editTagColor').value = this.dataset.color;
+                    document.getElementById('editColorPreview').style.backgroundColor = this.dataset.color;
+                    editModal.show();
+                };
             });
             
-            let totalUsed = 0;
-            statsBadges.forEach(badge => {
-                const count = parseInt(badge.innerHTML.match(/\d+/)[0]);
-                totalUsed += count;
-            });
-            const usedTagsCount = document.getElementById('usedTagsCount');
-            if (usedTagsCount) {
-                usedTagsCount.textContent = totalUsed;
+            // Предпросмотр цвета при редактировании
+            const editColorInput = document.querySelector('#editTagModal input[name="tag_color"]');
+            const editColorPreview = document.getElementById('editColorPreview');
+            if (editColorInput && editColorPreview) {
+                editColorInput.oninput = function() {
+                    editColorPreview.style.backgroundColor = this.value;
+                };
             }
+            
+            // Удаление метки
+            document.querySelectorAll('.delete-tag').forEach(btn => {
+                btn.onclick = function(e) {
+                    e.stopPropagation();
+                    document.getElementById('deleteTagId').value = this.dataset.id;
+                    document.getElementById('deleteTagName').innerText = this.dataset.name;
+                    deleteModal.show();
+                };
+            });
+            
+            // Клик по карточке метки для быстрого редактирования
+            document.querySelectorAll('.tag-card').forEach(card => {
+                card.onclick = function(e) {
+                    if (e.target.closest('.edit-tag') || e.target.closest('.delete-tag')) return;
+                    const editBtn = this.querySelector('.edit-tag');
+                    if (editBtn) editBtn.click();
+                };
+            });
         });
-        
-        // Обработка модального окна редактирования
-        const editTagModal = document.getElementById('editTagModal');
-        if (editTagModal) {
-            editTagModal.addEventListener('show.bs.modal', function(event) {
-                const button = event.relatedTarget;
-                const tagId = button.getAttribute('data-tag-id');
-                const tagName = button.getAttribute('data-tag-name');
-                const tagColor = button.getAttribute('data-tag-color');
-                
-                const modalInputId = editTagModal.querySelector('#edit_tag_id');
-                const modalInputName = editTagModal.querySelector('#edit_tag_name');
-                const modalInputColor = editTagModal.querySelector('#edit_tag_color');
-                
-                if (modalInputId) modalInputId.value = tagId;
-                if (modalInputName) modalInputName.value = tagName;
-                if (modalInputColor) modalInputColor.value = tagColor;
-            });
-        }
-        
-        // Обработка модального окна удаления
-        const deleteTagModal = document.getElementById('deleteTagModal');
-        if (deleteTagModal) {
-            deleteTagModal.addEventListener('show.bs.modal', function(event) {
-                const button = event.relatedTarget;
-                const tagId = button.getAttribute('data-tag-id');
-                const tagName = button.getAttribute('data-tag-name');
-                
-                const modalInputId = deleteTagModal.querySelector('#delete_tag_id');
-                const modalSpanName = deleteTagModal.querySelector('#delete_tag_name');
-                
-                if (modalInputId) modalInputId.value = tagId;
-                if (modalSpanName) modalSpanName.textContent = tagName;
-            });
-        }
     </script>
 </body>
 </html>

@@ -36,6 +36,7 @@ $user = $stmt->fetch();
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <meta name="theme-color" content="#667eea">
     <title>Профиль - Финансовый дневник</title>
+    <link rel="icon" type="image/png" href="favicon.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
@@ -195,14 +196,18 @@ $user = $stmt->fetch();
 
     <div class="mobile-nav">
         <div class="row g-0">
-            <div class="col-3"><a href="dashboard.php" class="nav-item"><i
-                        class="bi bi-house-door"></i><span>Главная</span></a></div>
-            <div class="col-3"><a href="modules/finances.php" class="nav-item"><i
+            <div class="col-2"><a href="dashboard.php" class="nav-item"><i
+                        class="bi bi-house-door active"></i><span>Главная</span></a></div>
+            <div class="col-2"><a href="modules/finances.php" class="nav-item"><i
                         class="bi bi-calculator"></i><span>Финансы</span></a></div>
-            <div class="col-3"><a href="modules/accounts.php" class="nav-item"><i
-                        class="bi bi-bank"></i><span>Счета</span></a></div>
-            <div class="col-3"><a href="modules/statistics.php" class="nav-item"><i
+            <div class="col-2"><a href="modules/accounts.php" class="nav-item"><i class="bi bi-bank"></i><span>Счета</span></a>
+            </div>
+            <div class="col-2"><a href="modules/statistics.php" class="nav-item"><i
                         class="bi bi-graph-up"></i><span>Статистика</span></a></div>
+            <div class="col-2"> <a href="modules/transfers.php" class="nav-item"><i
+                        class="bi bi-arrow-left-right"></i><span>Переводы</span></a></div>
+            <div class="col-2"> <a href="profile.php" class="nav-item active"><i
+                        class="bi bi-person"></i><span>Профиль</span></a></div>
         </div>
     </div>
 

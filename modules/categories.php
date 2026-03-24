@@ -10,7 +10,6 @@ if (!isset($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 $message = '';
 $error = '';
-$edit_category = null;
 $filter_type = $_GET['type'] ?? 'all'; // all, income, expense
 
 // Обработка действий
@@ -25,13 +24,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $stmt = $pdo->prepare("INSERT INTO categories (user_id, name, color, type) VALUES (?, ?, ?, ?)");
                 $stmt->execute([$user_id, $name, $color, $type]);
-                $message = "Категория успешно добавлена";
+                header("Location: categories.php");
+                exit;
             } catch (PDOException $e) {
-                if ($e->getCode() == 23000) {
-                    $error = "Категория с таким названием и типом уже существует";
-                } else {
-                    $error = "Ошибка при добавлении категории: " . $e->getMessage();
-                }
+                $error = "Категория с таким названием уже существует";
             }
         } else {
             $error = "Введите название категории";
@@ -49,13 +45,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $stmt = $pdo->prepare("UPDATE categories SET name = ?, color = ?, type = ? WHERE id = ? AND user_id = ?");
                 $stmt->execute([$name, $color, $type, $category_id, $user_id]);
-                $message = "Категория успешно обновлена";
+                header("Location: categories.php");
+                exit;
             } catch (PDOException $e) {
-                if ($e->getCode() == 23000) {
-                    $error = "Категория с таким названием и типом уже существует";
-                } else {
-                    $error = "Ошибка при обновлении категории";
-                }
+                $error = "Категория с таким названием уже существует";
             }
         } else {
             $error = "Введите название категории";
@@ -73,11 +66,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $count = $stmt->fetch()['count'];
             
             if ($count > 0) {
-                $error = "Невозможно удалить категорию. Она используется в $count операциях. Сначала удалите или переназначьте эти операции.";
+                $error = "Невозможно удалить. Категория используется в $count операциях";
+                // Не делаем redirect, показываем ошибку
             } else {
                 $stmt = $pdo->prepare("DELETE FROM categories WHERE id = ? AND user_id = ?");
                 $stmt->execute([$category_id, $user_id]);
-                $message = "Категория успешно удалена";
+                header("Location: categories.php");
+                exit;
             }
         }
     }
@@ -110,508 +105,470 @@ while ($row = $stmt->fetch()) {
     $category_stats[$row['category_id']] = $row;
 }
 
-// Если нужно редактировать - получаем данные
-if (isset($_GET['edit'])) {
-    $edit_id = $_GET['edit'];
-    $stmt = $pdo->prepare("SELECT * FROM categories WHERE id = ? AND user_id = ?");
-    $stmt->execute([$edit_id, $user_id]);
-    $edit_category = $stmt->fetch();
-}
+// Подсчет статистики
+$income_count = count(array_filter($categories, function($cat) { return $cat['type'] == 'income'; }));
+$expense_count = count(array_filter($categories, function($cat) { return $cat['type'] == 'expense'; }));
+$used_count = count($category_stats);
 ?>
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Банк Категорий - Финансовый дневник</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="theme-color" content="#667eea">
+    <title>Категории - Финансовый дневник</title>
+    <link rel="icon" type="image/png" href="../favicon.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
-        .sidebar {
-            min-height: 100vh;
+        * { -webkit-tap-highlight-color: transparent; }
+        body { background: #f8f9fa; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding-bottom: 70px; }
+        
+        .mobile-header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .sidebar .nav-link {
-            color: rgba(255,255,255,0.8);
-            padding: 12px 20px;
-            margin: 5px 0;
-            border-radius: 10px;
-            transition: all 0.3s;
-        }
-        .sidebar .nav-link:hover, .sidebar .nav-link.active {
-            background: rgba(255,255,255,0.1);
             color: white;
-            transform: translateX(5px);
+            padding: 20px 16px;
+            border-radius: 0 0 24px 24px;
+            margin-bottom: 16px;
         }
-        .sidebar .nav-link i {
-            margin-right: 10px;
+        
+        .back-button {
+            background: rgba(255,255,255,0.2);
+            border-radius: 30px;
+            padding: 8px 16px;
+            color: white;
+            text-decoration: none;
+            font-size: 14px;
+            display: inline-block;
         }
-        .main-content {
-            background-color: #f8f9fa;
-            min-height: 100vh;
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            padding: 0 16px;
+            margin-bottom: 20px;
         }
-        .category-card {
-            border-radius: 12px;
-            transition: all 0.3s;
-            cursor: pointer;
-            border: none;
-            position: relative;
-            overflow: hidden;
+        
+        .stat-card {
+            background: white;
+            border-radius: 16px;
+            padding: 12px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
-        .category-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-        }
-        .category-card.income {
-            border-left: 4px solid #28a745;
-        }
-        .category-card.expense {
-            border-left: 4px solid #dc3545;
-        }
-        .category-color {
-            width: 50px;
-            height: 50px;
-            border-radius: 12px;
-            margin-right: 15px;
-            transition: transform 0.3s;
-        }
-        .category-card:hover .category-color {
-            transform: scale(1.05);
-        }
-        .category-actions {
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-        .category-card:hover .category-actions {
-            opacity: 1;
-        }
-        .stats-badge {
-            background: #f8f9fa;
-            padding: 5px 12px;
+        
+        .stat-value { font-size: 24px; font-weight: bold; margin: 6px 0; }
+        .stat-label { font-size: 11px; color: #6c757d; }
+        
+        .filter-bar {
+            background: white;
+            margin: 0 16px 16px;
             border-radius: 20px;
-            font-size: 12px;
-            margin-right: 8px;
+            padding: 8px;
+            display: flex;
+            gap: 8px;
         }
+        
         .filter-btn {
-            border-radius: 25px;
-            padding: 8px 20px;
-            margin: 0 5px;
-            transition: all 0.3s;
+            flex: 1;
+            padding: 10px;
+            border-radius: 30px;
+            text-align: center;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            background: #f8f9fa;
+            color: #6c757d;
         }
+        
         .filter-btn.active {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            border-color: transparent;
         }
-        .stat-card {
-            border-radius: 15px;
+        
+        .categories-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            padding: 0 16px;
+            margin-bottom: 20px;
+        }
+        
+        .category-card {
+            background: white;
+            border-radius: 20px;
+            padding: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .category-card:active { transform: scale(0.98); }
+        .category-card.income { border-top: 3px solid #28a745; }
+        .category-card.expense { border-top: 3px solid #dc3545; }
+        
+        .category-color {
+            width: 40px;
+            height: 40px;
+            border-radius: 20px;
+            margin-bottom: 12px;
+        }
+        
+        .category-name {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            word-break: break-word;
+        }
+        
+        .category-stats {
+            font-size: 11px;
+            color: #6c757d;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .category-amount {
+            font-weight: bold;
+            font-size: 13px;
+        }
+        
+        .category-actions {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            display: flex;
+            gap: 6px;
+        }
+        
+        .category-actions button {
+            background: white;
             border: none;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            border-radius: 20px;
+            padding: 4px 8px;
+            font-size: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
+        
         .type-badge {
             position: absolute;
-            top: 15px;
-            right: 15px;
-            font-size: 12px;
-            padding: 4px 12px;
-            border-radius: 20px;
+            bottom: 12px;
+            right: 12px;
+            font-size: 10px;
+            padding: 4px 8px;
+            border-radius: 12px;
         }
+        
+        .type-badge.income { background: #d4edda; color: #155724; }
+        .type-badge.expense { background: #f8d7da; color: #721c24; }
+        
+        .fab {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            width: 56px;
+            height: 56px;
+            border-radius: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(102,126,234,0.4);
+            cursor: pointer;
+            z-index: 1000;
+        }
+        
+        .fab:active { transform: scale(0.95); }
+        .fab i { font-size: 24px; color: white; }
+        
+        .mobile-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            padding: 8px 0;
+            z-index: 1000;
+        }
+        
+        .mobile-nav .nav-item {
+            text-align: center;
+            padding: 8px 0;
+            color: #6c757d;
+            text-decoration: none;
+            display: block;
+        }
+        
+        .mobile-nav .nav-item.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .mobile-nav .nav-item i { font-size: 22px; display: block; margin-bottom: 4px; }
+        .mobile-nav .nav-item span { font-size: 11px; }
+        
+        .modal-content { border-radius: 24px 24px 0 0; }
+        .form-control, .form-select { border-radius: 30px; padding: 12px 16px; }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+            grid-column: span 2;
+        }
+        
+        .empty-state i { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
+        
+        .color-preview {
+            width: 40px;
+            height: 40px;
+            border-radius: 20px;
+            border: 2px solid #e9ecef;
+        }
+        
+        .alert { border-radius: 16px; margin: 0 16px 16px; }
     </style>
 </head>
 <body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Sidebar -->
-            <div class="col-md-2 p-0">
-                <div class="sidebar">
-                    <div class="text-center py-4">
-                        <i class="bi bi-wallet2" style="font-size: 48px; color: white;"></i>
-                        <h5 class="text-white mt-2"><?php echo htmlspecialchars($_SESSION['username']); ?></h5>
-                        <small class="text-white-50">Финансовый дневник</small>
+    <div class="mobile-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <a href="../dashboard.php" class="back-button">← Назад</a>
+            <div></div>
+        </div>
+        <div class="page-title fs-3 fw-bold mt-2">Категории</div>
+        <div class="small">Управление категориями доходов и расходов</div>
+    </div>
+    
+    <?php if ($error): ?>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <?php echo htmlspecialchars($error); ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+    
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div>📁</div>
+            <div class="stat-value"><?php echo count($categories); ?></div>
+            <div class="stat-label">Всего категорий</div>
+        </div>
+        <div class="stat-card">
+            <div class="text-success">↑</div>
+            <div class="stat-value text-success"><?php echo $income_count; ?></div>
+            <div class="stat-label">Доходы</div>
+        </div>
+        <div class="stat-card">
+            <div class="text-danger">↓</div>
+            <div class="stat-value text-danger"><?php echo $expense_count; ?></div>
+            <div class="stat-label">Расходы</div>
+        </div>
+    </div>
+    
+    <div class="filter-bar">
+        <a href="?type=all" class="filter-btn <?php echo $filter_type == 'all' ? 'active' : ''; ?>">Все</a>
+        <a href="?type=income" class="filter-btn <?php echo $filter_type == 'income' ? 'active' : ''; ?>">Доходы</a>
+        <a href="?type=expense" class="filter-btn <?php echo $filter_type == 'expense' ? 'active' : ''; ?>">Расходы</a>
+    </div>
+    
+    <div class="categories-grid">
+        <?php if (count($categories) > 0): ?>
+            <?php foreach ($categories as $cat): ?>
+                <div class="category-card <?php echo $cat['type']; ?>" 
+                     data-id="<?php echo $cat['id']; ?>"
+                     data-name="<?php echo htmlspecialchars($cat['name']); ?>"
+                     data-color="<?php echo $cat['color']; ?>"
+                     data-type="<?php echo $cat['type']; ?>">
+                    <div class="category-color" style="background-color: <?php echo $cat['color']; ?>;"></div>
+                    <div class="category-name"><?php echo htmlspecialchars($cat['name']); ?></div>
+                    <div class="category-stats">
+                        <?php if (isset($category_stats[$cat['id']])): ?>
+                            <div class="category-amount">
+                                <?php echo number_format($category_stats[$cat['id']]['total'], 0, '.', ' '); ?> ₽
+                            </div>
+                            <div><?php echo $category_stats[$cat['id']]['count']; ?> операций</div>
+                        <?php else: ?>
+                            <div class="text-muted">Нет операций</div>
+                        <?php endif; ?>
                     </div>
-                    <nav class="nav flex-column px-3">
-                        <a class="nav-link" href="../dashboard.php">
-                            <i class="bi bi-speedometer2"></i> Дашборд
-                        </a>
-                        <a class="nav-link" href="tags.php">
-                            <i class="bi bi-tags"></i> Банк Меток
-                        </a>
-                        <a class="nav-link active" href="categories.php">
-                            <i class="bi bi-grid"></i> Банк Категорий
-                        </a>
-                        <a class="nav-link" href="accounts.php">
-                            <i class="bi bi-bank"></i> Справочник Счетов
-                        </a>
-                        <a class="nav-link" href="finances.php">
-                            <i class="bi bi-calculator"></i> Финансы
-                        </a>
-                        <a class="nav-link" href="transfers.php">
-                            <i class="bi bi-arrow-left-right"></i> Переводы
-                        </a>
-                        <a class="nav-link" href="statistics.php">
-                            <i class="bi bi-graph-up"></i> Статистика
-                        </a>
-                        <hr class="bg-light">
-                        <a class="nav-link" href="../profile.php">
-                            <i class="bi bi-person-circle"></i> Профиль
-                        </a>
-                        <a class="nav-link" href="../logout.php">
-                            <i class="bi bi-box-arrow-right"></i> Выход
-                        </a>
-                    </nav>
-                </div>
-            </div>
-            
-            <!-- Main Content -->
-            <div class="col-md-10 p-0">
-                <div class="main-content">
-                    <div class="p-4">
-                        <!-- Header -->
-                        <div class="d-flex justify-content-between align-items-center mb-4">
-                            <div>
-                                <h2><i class="bi bi-grid"></i> Банк Категорий</h2>
-                                <p class="text-muted">Управление категориями для доходов и расходов</p>
-                            </div>
-                            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
-                                <i class="bi bi-plus-circle"></i> Добавить категорию
-                            </button>
-                        </div>
-                        
-                        <!-- Messages -->
-                        <?php if ($message): ?>
-                            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                <i class="bi bi-check-circle"></i> <?php echo htmlspecialchars($message); ?>
-                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                            </div>
-                        <?php endif; ?>
-                        
-                        <?php if ($error): ?>
-                            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                                <i class="bi bi-exclamation-triangle"></i> <?php echo htmlspecialchars($error); ?>
-                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                            </div>
-                        <?php endif; ?>
-                        
-                        <!-- Statistics Cards -->
-                        <div class="row mb-4">
-                            <div class="col-md-3">
-                                <div class="card stat-card bg-primary text-white">
-                                    <div class="card-body">
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <div>
-                                                <h6 class="card-title">Всего категорий</h6>
-                                                <h3 class="mb-0"><?php echo count($categories); ?></h3>
-                                            </div>
-                                            <i class="bi bi-grid fs-1 opacity-50"></i>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="card stat-card bg-success text-white">
-                                    <div class="card-body">
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <div>
-                                                <h6 class="card-title">Категории доходов</h6>
-                                                <h3 class="mb-0">
-                                                    <?php 
-                                                        $income_count = count(array_filter($categories, function($cat) {
-                                                            return $cat['type'] == 'income';
-                                                        }));
-                                                        echo $income_count;
-                                                    ?>
-                                                </h3>
-                                            </div>
-                                            <i class="bi bi-arrow-up-circle fs-1 opacity-50"></i>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="card stat-card bg-danger text-white">
-                                    <div class="card-body">
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <div>
-                                                <h6 class="card-title">Категории расходов</h6>
-                                                <h3 class="mb-0">
-                                                    <?php 
-                                                        $expense_count = count(array_filter($categories, function($cat) {
-                                                            return $cat['type'] == 'expense';
-                                                        }));
-                                                        echo $expense_count;
-                                                    ?>
-                                                </h3>
-                                            </div>
-                                            <i class="bi bi-arrow-down-circle fs-1 opacity-50"></i>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="card stat-card bg-info text-white">
-                                    <div class="card-body">
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <div>
-                                                <h6 class="card-title">Используется в операциях</h6>
-                                                <h3 class="mb-0"><?php echo count($category_stats); ?></h3>
-                                            </div>
-                                            <i class="bi bi-graph-up fs-1 opacity-50"></i>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Filter Tabs -->
-                        <div class="mb-4">
-                            <div class="btn-group" role="group">
-                                <a href="?type=all" class="btn btn-outline-secondary filter-btn <?php echo $filter_type == 'all' ? 'active' : ''; ?>">
-                                    <i class="bi bi-grid"></i> Все
-                                </a>
-                                <a href="?type=income" class="btn btn-outline-success filter-btn <?php echo $filter_type == 'income' ? 'active' : ''; ?>">
-                                    <i class="bi bi-arrow-up-circle"></i> Доходы
-                                </a>
-                                <a href="?type=expense" class="btn btn-outline-danger filter-btn <?php echo $filter_type == 'expense' ? 'active' : ''; ?>">
-                                    <i class="bi bi-arrow-down-circle"></i> Расходы
-                                </a>
-                            </div>
-                        </div>
-                        
-                        <!-- Categories Grid -->
-                        <div class="row">
-                            <?php if (count($categories) > 0): ?>
-                                <?php foreach ($categories as $category): ?>
-                                    <div class="col-md-4 col-lg-3 mb-4">
-                                        <div class="card category-card <?php echo $category['type']; ?> h-100">
-                                            <div class="card-body">
-                                                <div class="d-flex align-items-start mb-3">
-                                                    <div class="category-color" style="background-color: <?php echo htmlspecialchars($category['color']); ?>;"></div>
-                                                    <div class="flex-grow-1">
-                                                        <h6 class="mb-0"><?php echo htmlspecialchars($category['name']); ?></h6>
-                                                        <small class="text-muted">ID: <?php echo $category['id']; ?></small>
-                                                    </div>
-                                                </div>
-                                                
-                                                <div class="mt-3">
-                                                    <?php if (isset($category_stats[$category['id']])): ?>
-                                                        <span class="stats-badge">
-                                                            <i class="bi bi-currency-dollar"></i> 
-                                                            <?php echo number_format($category_stats[$category['id']]['total'], 2, '.', ' '); ?> ₽
-                                                        </span>
-                                                        <span class="stats-badge">
-                                                            <i class="bi bi-hash"></i> 
-                                                            <?php echo $category_stats[$category['id']]['count']; ?> операций
-                                                        </span>
-                                                    <?php else: ?>
-                                                        <span class="stats-badge text-muted">
-                                                            <i class="bi bi-inbox"></i> Нет операций
-                                                        </span>
-                                                    <?php endif; ?>
-                                                </div>
-                                                
-                                                <div class="category-actions mt-3">
-                                                    <div class="btn-group w-100">
-                                                        <a href="?edit=<?php echo $category['id']; ?>" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editCategoryModal" 
-                                                           data-category-id="<?php echo $category['id']; ?>" 
-                                                           data-category-name="<?php echo htmlspecialchars($category['name']); ?>" 
-                                                           data-category-color="<?php echo htmlspecialchars($category['color']); ?>"
-                                                           data-category-type="<?php echo $category['type']; ?>">
-                                                            <i class="bi bi-pencil"></i> Редактировать
-                                                        </a>
-                                                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteCategoryModal" 
-                                                                data-category-id="<?php echo $category['id']; ?>" 
-                                                                data-category-name="<?php echo htmlspecialchars($category['name']); ?>">
-                                                            <i class="bi bi-trash"></i> Удалить
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="type-badge <?php echo $category['type'] == 'income' ? 'bg-success' : 'bg-danger'; ?> text-white">
-                                                <i class="bi bi-<?php echo $category['type'] == 'income' ? 'arrow-up' : 'arrow-down'; ?>"></i>
-                                                <?php echo $category['type'] == 'income' ? 'Доход' : 'Расход'; ?>
-                                            </div>
-                                        </div>
-                                    </div>
-                                <?php endforeach; ?>
-                            <?php else: ?>
-                                <div class="col-12">
-                                    <div class="alert alert-info text-center">
-                                        <i class="bi bi-info-circle fs-1"></i>
-                                        <h5>Нет добавленных категорий</h5>
-                                        <p>Нажмите кнопку "Добавить категорию" чтобы создать первую категорию</p>
-                                        <button class="btn btn-primary mt-2" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
-                                            <i class="bi bi-plus-circle"></i> Добавить категорию
-                                        </button>
-                                    </div>
-                                </div>
-                            <?php endif; ?>
-                        </div>
+                    <div class="category-actions">
+                        <button class="edit-cat" data-id="<?php echo $cat['id']; ?>" data-name="<?php echo htmlspecialchars($cat['name']); ?>" data-color="<?php echo $cat['color']; ?>" data-type="<?php echo $cat['type']; ?>">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="delete-cat" data-id="<?php echo $cat['id']; ?>" data-name="<?php echo htmlspecialchars($cat['name']); ?>">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                    <div class="type-badge <?php echo $cat['type']; ?>">
+                        <?php echo $cat['type'] == 'income' ? 'Доход' : 'Расход'; ?>
                     </div>
                 </div>
+            <?php endforeach; ?>
+        <?php else: ?>
+            <div class="empty-state">
+                <i class="bi bi-grid"></i>
+                <h5>Нет категорий</h5>
+                <p class="small">Создайте первую категорию, нажав на кнопку +</p>
             </div>
+        <?php endif; ?>
+    </div>
+    
+    <div class="fab" id="addCategoryBtn"><i class="bi bi-plus-lg"></i></div>
+    
+    <div class="mobile-nav">
+        <div class="row g-0">
+            <div class="col-3"><a href="../dashboard.php" class="nav-item"><i class="bi bi-house-door"></i><span>Главная</span></a></div>
+            <div class="col-3"><a href="finances.php" class="nav-item"><i class="bi bi-calculator"></i><span>Финансы</span></a></div>
+            <div class="col-3"><a href="accounts.php" class="nav-item"><i class="bi bi-bank"></i><span>Счета</span></a></div>
+            <div class="col-3"><a href="categories.php" class="nav-item active"><i class="bi bi-grid-fill"></i><span>Категории</span></a></div>
         </div>
     </div>
     
     <!-- Add Category Modal -->
     <div class="modal fade" id="addCategoryModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Добавить категорию</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <div class="modal-dialog"><div class="modal-content">
+            <div class="modal-header"><h5>Добавить категорию</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <form method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Название категории</label>
+                        <input type="text" name="category_name" class="form-control" required maxlength="50" placeholder="например: Продукты, Транспорт">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Тип</label>
+                        <select name="category_type" class="form-select" required>
+                            <option value="expense">Расход (траты)</option>
+                            <option value="income">Доход (поступления)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Цвет</label>
+                        <div class="d-flex align-items-center gap-3">
+                            <input type="color" name="category_color" class="form-control form-control-color w-25" value="#6c757d">
+                            <div class="color-preview" id="addColorPreview" style="background-color: #6c757d;"></div>
+                        </div>
+                    </div>
                 </div>
-                <form method="POST" action="">
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label for="category_name" class="form-label">Название категории *</label>
-                            <input type="text" class="form-control" id="category_name" name="category_name" required maxlength="50">
-                            <small class="text-muted">Максимум 50 символов</small>
-                        </div>
-                        <div class="mb-3">
-                            <label for="category_type" class="form-label">Тип категории *</label>
-                            <select class="form-select" id="category_type" name="category_type" required>
-                                <option value="expense">Расход (траты)</option>
-                                <option value="income">Доход (поступления)</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label for="category_color" class="form-label">Цвет категории</label>
-                            <div class="d-flex align-items-center">
-                                <input type="color" class="form-control form-control-color w-25 me-2" id="category_color" name="category_color" value="#6c757d">
-                                <span class="text-muted">Выберите цвет для визуального выделения</span>
-                            </div>
-                        </div>
-                        <div class="alert alert-info">
-                            <i class="bi bi-info-circle"></i> 
-                            <strong>Примеры категорий:</strong><br>
-                            <span class="text-success">Доходы:</span> Зарплата, Фриланс, Подарки, Инвестиции<br>
-                            <span class="text-danger">Расходы:</span> Продукты, Транспорт, Коммунальные, Развлечения
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="submit" name="add_category" class="btn btn-primary">Добавить</button>
-                    </div>
-                </form>
-            </div>
-        </div>
+                <div class="modal-footer"><button type="submit" name="add_category" class="btn btn-primary w-100 rounded-pill">Добавить</button></div>
+            </form>
+        </div></div>
     </div>
     
     <!-- Edit Category Modal -->
     <div class="modal fade" id="editCategoryModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Редактировать категорию</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <div class="modal-dialog"><div class="modal-content">
+            <div class="modal-header"><h5>Редактировать категорию</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="category_id" id="editCatId">
+                    <div class="mb-3">
+                        <label class="form-label">Название категории</label>
+                        <input type="text" name="category_name" id="editCatName" class="form-control" required maxlength="50">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Тип</label>
+                        <select name="category_type" id="editCatType" class="form-select" required>
+                            <option value="expense">Расход (траты)</option>
+                            <option value="income">Доход (поступления)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Цвет</label>
+                        <div class="d-flex align-items-center gap-3">
+                            <input type="color" name="category_color" id="editCatColor" class="form-control form-control-color w-25">
+                            <div class="color-preview" id="editColorPreview"></div>
+                        </div>
+                    </div>
+                    <div class="alert alert-warning small">
+                        <i class="bi bi-exclamation-triangle"></i> Изменение типа может повлиять на существующие операции
+                    </div>
                 </div>
-                <form method="POST" action="">
-                    <div class="modal-body">
-                        <input type="hidden" id="edit_category_id" name="category_id">
-                        <div class="mb-3">
-                            <label for="edit_category_name" class="form-label">Название категории *</label>
-                            <input type="text" class="form-control" id="edit_category_name" name="category_name" required maxlength="50">
-                        </div>
-                        <div class="mb-3">
-                            <label for="edit_category_type" class="form-label">Тип категории *</label>
-                            <select class="form-select" id="edit_category_type" name="category_type" required>
-                                <option value="expense">Расход (траты)</option>
-                                <option value="income">Доход (поступления)</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label for="edit_category_color" class="form-label">Цвет категории</label>
-                            <input type="color" class="form-control form-control-color" id="edit_category_color" name="category_color">
-                        </div>
-                        <div class="alert alert-warning">
-                            <i class="bi bi-exclamation-triangle"></i> 
-                            Изменение типа категории может повлиять на существующие операции!
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="submit" name="edit_category" class="btn btn-primary">Сохранить</button>
-                    </div>
-                </form>
-            </div>
-        </div>
+                <div class="modal-footer"><button type="submit" name="edit_category" class="btn btn-primary w-100 rounded-pill">Сохранить</button></div>
+            </form>
+        </div></div>
     </div>
     
     <!-- Delete Category Modal -->
     <div class="modal fade" id="deleteCategoryModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle"></i> Удаление категории</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <div class="modal-dialog"><div class="modal-content">
+            <div class="modal-header"><h5>Удалить категорию?</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="category_id" id="deleteCatId">
+                    <p>Удалить категорию <strong id="deleteCatName"></strong>?</p>
+                    <div class="alert alert-danger small">
+                        <i class="bi bi-exclamation-triangle"></i> Категорию нельзя удалить, если есть операции
+                    </div>
                 </div>
-                <form method="POST" action="">
-                    <div class="modal-body">
-                        <input type="hidden" id="delete_category_id" name="category_id">
-                        <p>Вы уверены, что хотите удалить категорию <strong id="delete_category_name"></strong>?</p>
-                        <div class="alert alert-danger">
-                            <i class="bi bi-exclamation-triangle"></i> 
-                            <strong>Внимание!</strong> Категорию нельзя удалить, если она используется в операциях. Сначала удалите или переназначьте все операции с этой категорией.
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="submit" name="delete_category" class="btn btn-danger">Удалить</button>
-                    </div>
-                </form>
-            </div>
-        </div>
+                <div class="modal-footer"><button type="submit" name="delete_category" class="btn btn-danger w-100 rounded-pill">Удалить</button></div>
+            </form>
+        </div></div>
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Обработка модального окна редактирования
-        const editCategoryModal = document.getElementById('editCategoryModal');
-        if (editCategoryModal) {
-            editCategoryModal.addEventListener('show.bs.modal', function(event) {
-                const button = event.relatedTarget;
-                const categoryId = button.getAttribute('data-category-id');
-                const categoryName = button.getAttribute('data-category-name');
-                const categoryColor = button.getAttribute('data-category-color');
-                const categoryType = button.getAttribute('data-category-type');
-                
-                const modalInputId = editCategoryModal.querySelector('#edit_category_id');
-                const modalInputName = editCategoryModal.querySelector('#edit_category_name');
-                const modalInputColor = editCategoryModal.querySelector('#edit_category_color');
-                const modalInputType = editCategoryModal.querySelector('#edit_category_type');
-                
-                if (modalInputId) modalInputId.value = categoryId;
-                if (modalInputName) modalInputName.value = categoryName;
-                if (modalInputColor) modalInputColor.value = categoryColor;
-                if (modalInputType) modalInputType.value = categoryType;
+        document.addEventListener('DOMContentLoaded', function() {
+            const addModal = new bootstrap.Modal(document.getElementById('addCategoryModal'));
+            const editModal = new bootstrap.Modal(document.getElementById('editCategoryModal'));
+            const deleteModal = new bootstrap.Modal(document.getElementById('deleteCategoryModal'));
+            
+            // Кнопка добавления
+            document.getElementById('addCategoryBtn').onclick = () => addModal.show();
+            
+            // Предпросмотр цвета при добавлении
+            const addColorInput = document.querySelector('#addCategoryModal input[name="category_color"]');
+            const addColorPreview = document.getElementById('addColorPreview');
+            if (addColorInput && addColorPreview) {
+                addColorInput.oninput = function() {
+                    addColorPreview.style.backgroundColor = this.value;
+                };
+            }
+            
+            // Редактирование категории
+            document.querySelectorAll('.edit-cat').forEach(btn => {
+                btn.onclick = function(e) {
+                    e.stopPropagation();
+                    document.getElementById('editCatId').value = this.dataset.id;
+                    document.getElementById('editCatName').value = this.dataset.name;
+                    document.getElementById('editCatColor').value = this.dataset.color;
+                    document.getElementById('editCatType').value = this.dataset.type;
+                    document.getElementById('editColorPreview').style.backgroundColor = this.dataset.color;
+                    editModal.show();
+                };
             });
-        }
-        
-        // Обработка модального окна удаления
-        const deleteCategoryModal = document.getElementById('deleteCategoryModal');
-        if (deleteCategoryModal) {
-            deleteCategoryModal.addEventListener('show.bs.modal', function(event) {
-                const button = event.relatedTarget;
-                const categoryId = button.getAttribute('data-category-id');
-                const categoryName = button.getAttribute('data-category-name');
-                
-                const modalInputId = deleteCategoryModal.querySelector('#delete_category_id');
-                const modalSpanName = deleteCategoryModal.querySelector('#delete_category_name');
-                
-                if (modalInputId) modalInputId.value = categoryId;
-                if (modalSpanName) modalSpanName.textContent = categoryName;
+            
+            // Предпросмотр цвета при редактировании
+            const editColorInput = document.querySelector('#editCategoryModal input[name="category_color"]');
+            const editColorPreview = document.getElementById('editColorPreview');
+            if (editColorInput && editColorPreview) {
+                editColorInput.oninput = function() {
+                    editColorPreview.style.backgroundColor = this.value;
+                };
+            }
+            
+            // Удаление категории
+            document.querySelectorAll('.delete-cat').forEach(btn => {
+                btn.onclick = function(e) {
+                    e.stopPropagation();
+                    document.getElementById('deleteCatId').value = this.dataset.id;
+                    document.getElementById('deleteCatName').innerText = this.dataset.name;
+                    deleteModal.show();
+                };
             });
-        }
-        
-        // Динамическое изменение иконки при выборе типа категории в форме добавления
-        const categoryTypeSelect = document.getElementById('category_type');
-        if (categoryTypeSelect) {
-            categoryTypeSelect.addEventListener('change', function() {
-                const icon = this.value === 'income' ? 'arrow-up-circle' : 'arrow-down-circle';
-                const color = this.value === 'income' ? 'success' : 'danger';
-                // Можно добавить визуальную обратную связь
+            
+            // Клик по карточке для быстрого редактирования
+            document.querySelectorAll('.category-card').forEach(card => {
+                card.onclick = function(e) {
+                    if (e.target.closest('.edit-cat') || e.target.closest('.delete-cat')) return;
+                    const editBtn = this.querySelector('.edit-cat');
+                    if (editBtn) editBtn.click();
+                };
             });
-        }
+        });
     </script>
 </body>
 </html>

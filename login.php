@@ -127,12 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </button>
                         </form>
                         
-                        <hr class="my-4">
                         
-                        <div class="text-center">
-                            <p class="text-muted small">Тестовый аккаунт:</p>
-                            <code class="small">username: testuser<br>password: test123</code>
-                        </div>
                     </div>
                 </div>
             </div>
