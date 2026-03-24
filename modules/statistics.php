@@ -8,28 +8,20 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $user_id = $_SESSION['user_id'];
-$message = '';
-$error = '';
-
-// Параметры фильтрации
 $period = $_GET['period'] ?? 'month';
 $date_from = $_GET['date_from'] ?? date('Y-m-01');
 $date_to = $_GET['date_to'] ?? date('Y-m-t');
 $filter_type = $_GET['filter_type'] ?? 'all';
-$filter_category = $_GET['filter_category'] ?? 'all';
-$filter_account = $_GET['filter_account'] ?? 'all';
-$filter_tag = $_GET['filter_tag'] ?? '';
 
-// Установка периода
 switch ($period) {
     case 'month':
         $date_from = date('Y-m-01');
         $date_to = date('Y-m-t');
         break;
     case 'quarter':
-        $quarter = ceil(date('n') / 3);
-        $date_from = date('Y-' . (($quarter - 1) * 3 + 1) . '-01');
-        $date_to = date('Y-' . ($quarter * 3) . '-t');
+        $q = ceil(date('n') / 3);
+        $date_from = date('Y-' . (($q - 1) * 3 + 1) . '-01');
+        $date_to = date('Y-' . ($q * 3) . '-t');
         break;
     case 'year':
         $date_from = date('Y-01-01');
@@ -37,130 +29,50 @@ switch ($period) {
         break;
 }
 
-// Получение данных
-$sql = "SELECT t.*, c.name as category_name, c.color as category_color, 
-        a.bank_name, a.account_number, a.color as account_color
-        FROM transactions t 
-        LEFT JOIN categories c ON t.category_id = c.id 
-        LEFT JOIN accounts a ON t.account_id = a.id 
-        WHERE t.user_id = ? 
-        AND t.transaction_date BETWEEN ? AND ?";
+$sql = "SELECT t.*, c.name as category_name, c.color as category_color FROM transactions t LEFT JOIN categories c ON t.category_id = c.id WHERE t.user_id = ? AND t.transaction_date BETWEEN ? AND ?";
 $params = [$user_id, $date_from, $date_to];
-
-if ($filter_type !== 'all') {
+if ($filter_type != 'all') {
     $sql .= " AND t.type = ?";
     $params[] = $filter_type;
 }
-
-if ($filter_category !== 'all') {
-    $sql .= " AND t.category_id = ?";
-    $params[] = $filter_category;
-}
-
-if ($filter_account !== 'all') {
-    $sql .= " AND t.account_id = ?";
-    $params[] = $filter_account;
-}
-
-if (!empty($filter_tag)) {
-    $sql .= " AND t.tags_text LIKE ?";
-    $params[] = "%$filter_tag%";
-}
-
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $transactions = $stmt->fetchAll();
 
-// Общая статистика
-$total_income = 0;
-$total_expense = 0;
-foreach ($transactions as $trans) {
-    if ($trans['type'] == 'income') {
-        $total_income += $trans['amount'];
-    } else {
-        $total_expense += $trans['amount'];
-    }
-}
+$total_income = array_sum(array_filter(array_column($transactions, 'amount', 'type'), fn($k) => $k == 'income', ARRAY_FILTER_USE_KEY));
+$total_expense = array_sum(array_filter(array_column($transactions, 'amount', 'type'), fn($k) => $k == 'expense', ARRAY_FILTER_USE_KEY));
 $balance = $total_income - $total_expense;
 
-// Статистика по категориям
-$categories_stats = [];
-foreach ($transactions as $trans) {
-    $key = $trans['category_name'];
-    if (!isset($categories_stats[$key])) {
-        $categories_stats[$key] = [
-            'name' => $trans['category_name'],
-            'color' => $trans['category_color'],
-            'total' => 0,
-            'count' => 0
-        ];
-    }
-    $categories_stats[$key]['total'] += $trans['amount'];
-    $categories_stats[$key]['count']++;
+$categories = [];
+foreach ($transactions as $t) {
+    $name = $t['category_name'];
+    if (!isset($categories[$name]))
+        $categories[$name] = ['name' => $name, 'color' => $t['category_color'], 'total' => 0];
+    $categories[$name]['total'] += $t['amount'];
 }
-uasort($categories_stats, function($a, $b) {
-    return $b['total'] <=> $a['total'];
-});
-$categories_stats = array_slice($categories_stats, 0, 5);
+usort($categories, fn($a, $b) => $b['total'] <=> $a['total']);
+$categories = array_slice($categories, 0, 5);
 
-// Статистика по дням
-$daily_stats = [];
-foreach ($transactions as $trans) {
-    $date = $trans['transaction_date'];
-    if (!isset($daily_stats[$date])) {
-        $daily_stats[$date] = ['date' => $date, 'income' => 0, 'expense' => 0];
-    }
-    if ($trans['type'] == 'income') {
-        $daily_stats[$date]['income'] += $trans['amount'];
-    } else {
-        $daily_stats[$date]['expense'] += $trans['amount'];
-    }
+$daily = [];
+foreach ($transactions as $t) {
+    $date = $t['transaction_date'];
+    if (!isset($daily[$date]))
+        $daily[$date] = ['date' => $date, 'income' => 0, 'expense' => 0];
+    if ($t['type'] == 'income')
+        $daily[$date]['income'] += $t['amount'];
+    else
+        $daily[$date]['expense'] += $t['amount'];
 }
-ksort($daily_stats);
-$daily_stats = array_slice($daily_stats, -7, 7);
-
-// Получение списков для фильтров
-$stmt = $pdo->prepare("SELECT * FROM categories WHERE user_id = ? ORDER BY name");
-$stmt->execute([$user_id]);
-$categories = $stmt->fetchAll();
-
-$stmt = $pdo->prepare("SELECT * FROM accounts WHERE user_id = ? AND is_active = 1 ORDER BY bank_name");
-$stmt->execute([$user_id]);
-$accounts = $stmt->fetchAll();
-
-$stmt = $pdo->prepare("SELECT * FROM tags WHERE user_id = ? ORDER BY name LIMIT 10");
-$stmt->execute([$user_id]);
-$tags = $stmt->fetchAll();
-
-// Экспорт в CSV
-if (isset($_GET['export'])) {
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="statistics_' . date('Y-m-d') . '.csv"');
-    
-    $output = fopen('php://output', 'w');
-    fputcsv($output, ['Дата', 'Тип', 'Категория', 'Счет', 'Сумма', 'Описание', 'Метки']);
-    
-    foreach ($transactions as $trans) {
-        fputcsv($output, [
-            $trans['transaction_date'],
-            $trans['type'] == 'income' ? 'Доход' : 'Расход',
-            $trans['category_name'],
-            $trans['bank_name'],
-            $trans['amount'],
-            $trans['description'],
-            $trans['tags_text']
-        ]);
-    }
-    
-    fclose($output);
-    exit;
-}
+ksort($daily);
+$daily = array_slice($daily, -7, 7);
 ?>
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <meta name="theme-color" content="#667eea">
     <title>Статистика - Финансовый дневник</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -170,13 +82,13 @@ if (isset($_GET['export'])) {
         * {
             -webkit-tap-highlight-color: transparent;
         }
-        
+
         body {
-            background-color: #f8f9fa;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             padding-bottom: 70px;
         }
-        
+
         .mobile-header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -184,26 +96,16 @@ if (isset($_GET['export'])) {
             border-radius: 0 0 24px 24px;
             margin-bottom: 16px;
         }
-        
+
         .back-button {
-            background: rgba(255,255,255,0.2);
-            border: none;
+            background: rgba(255, 255, 255, 0.2);
             border-radius: 30px;
             padding: 8px 16px;
             color: white;
-            font-size: 14px;
-            font-weight: 500;
             text-decoration: none;
-            display: inline-block;
-            cursor: pointer;
+            font-size: 14px;
         }
-        
-        .page-title {
-            font-size: 24px;
-            font-weight: bold;
-            margin: 12px 0 4px;
-        }
-        
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -211,21 +113,20 @@ if (isset($_GET['export'])) {
             padding: 0 16px;
             margin-bottom: 16px;
         }
-        
+
         .stat-card {
             background: white;
             border-radius: 16px;
             padding: 12px;
             text-align: center;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
         }
-        
+
         .stat-value {
-            font-size: 20px;
+            font-size: 18px;
             font-weight: bold;
-            margin: 8px 0;
         }
-        
+
         .period-bar {
             background: white;
             margin: 0 16px 16px;
@@ -235,100 +136,51 @@ if (isset($_GET['export'])) {
             gap: 8px;
             flex-wrap: wrap;
         }
-        
+
         .period-btn {
             flex: 1;
             padding: 10px;
             border-radius: 30px;
             text-align: center;
-            font-size: 13px;
-            font-weight: 500;
             text-decoration: none;
             background: #f8f9fa;
             color: #6c757d;
-            cursor: pointer;
-            min-width: 70px;
+            font-size: 13px;
         }
-        
+
         .period-btn.active {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
-        
-        .filter-section {
-            background: white;
-            margin: 0 16px 16px;
-            border-radius: 20px;
-            padding: 12px;
-        }
-        
-        .filter-row {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 8px;
-        }
-        
-        .filter-select {
-            flex: 1;
-            padding: 10px;
-            border-radius: 12px;
-            border: 1px solid #e9ecef;
-            background: white;
-            font-size: 13px;
-        }
-        
+
         .chart-container {
             background: white;
             margin: 0 16px 16px;
             border-radius: 20px;
             padding: 16px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
         }
-        
-        .chart-title {
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .category-list {
-            margin-top: 12px;
-        }
-        
+
         .category-item {
             margin-bottom: 12px;
         }
-        
-        .category-header {
-            display: flex;
-            justify-content: space-between;
-            font-size: 13px;
-            margin-bottom: 4px;
-        }
-        
+
         .progress {
             height: 6px;
             border-radius: 10px;
         }
-        
+
         .transaction-list {
             max-height: 400px;
             overflow-y: auto;
         }
-        
+
         .transaction-item {
             padding: 12px 0;
             border-bottom: 1px solid #e9ecef;
         }
-        
-        .transaction-item:last-child {
-            border-bottom: none;
-        }
-        
-        .export-btn {
+
+        .fab {
             position: fixed;
             bottom: 80px;
             right: 20px;
@@ -339,28 +191,23 @@ if (isset($_GET['export'])) {
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 4px 12px rgba(40,167,69,0.4);
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
             cursor: pointer;
             z-index: 1000;
             text-decoration: none;
         }
-        
-        .export-btn i {
-            font-size: 24px;
-            color: white;
-        }
-        
+
         .mobile-nav {
             position: fixed;
             bottom: 0;
             left: 0;
             right: 0;
             background: white;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
             padding: 8px 0;
             z-index: 1000;
         }
-        
+
         .mobile-nav .nav-item {
             text-align: center;
             padding: 8px 0;
@@ -368,343 +215,204 @@ if (isset($_GET['export'])) {
             text-decoration: none;
             display: block;
         }
-        
+
         .mobile-nav .nav-item.active {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
-        
+
         .mobile-nav .nav-item i {
-            font-size: 20px;
+            font-size: 22px;
             display: block;
             margin-bottom: 4px;
         }
-        
+
         .mobile-nav .nav-item span {
-            font-size: 10px;
+            font-size: 11px;
         }
-        
-        .empty-state {
-            text-align: center;
-            padding: 40px 20px;
-            color: #6c757d;
-        }
-        
+
         .text-success {
-            color: #28a745 !important;
+            color: #28a745;
         }
-        
+
         .text-danger {
-            color: #dc3545 !important;
+            color: #dc3545;
         }
-        
-        canvas {
-            max-height: 200px;
+
+        .modal-content {
+            border-radius: 24px 24px 0 0;
         }
-        
-        @media (max-width: 480px) {
-            .stat-value {
-                font-size: 16px;
-            }
-            .period-btn {
-                font-size: 11px;
-                padding: 8px;
-            }
+
+        .form-control,
+        .form-select {
+            border-radius: 30px;
+            padding: 12px 16px;
         }
     </style>
 </head>
+
 <body>
     <div class="mobile-header">
         <div class="d-flex justify-content-between align-items-center">
             <a href="../dashboard.php" class="back-button">← Назад</a>
             <button class="back-button" id="filterBtn">📊 Фильтр</button>
         </div>
-        <div class="page-title">Статистика</div>
+        <div class="page-title fs-3 fw-bold mt-2">Статистика</div>
         <div class="small">Анализ доходов и расходов</div>
     </div>
-    
-    <!-- Stats Cards -->
+
     <div class="stats-grid">
         <div class="stat-card">
-            <div class="text-success fs-4">↑</div>
+            <div class="text-success">↑</div>
             <div class="stat-value text-success">+<?php echo number_format($total_income, 0, '.', ' '); ?></div>
             <div class="small">Доходы</div>
         </div>
         <div class="stat-card">
-            <div class="text-danger fs-4">↓</div>
+            <div class="text-danger">↓</div>
             <div class="stat-value text-danger">-<?php echo number_format($total_expense, 0, '.', ' '); ?></div>
             <div class="small">Расходы</div>
         </div>
         <div class="stat-card">
-            <div class="fs-4">💰</div>
+            <div>💰</div>
             <div class="stat-value"><?php echo number_format($balance, 0, '.', ' '); ?></div>
             <div class="small">Баланс</div>
         </div>
     </div>
-    
-    <!-- Period Selector -->
+
     <div class="period-bar">
-        <a href="?period=month&<?php echo http_build_query(array_merge($_GET, ['period' => 'month'])); ?>" class="period-btn <?php echo $period == 'month' ? 'active' : ''; ?>">Месяц</a>
-        <a href="?period=quarter&<?php echo http_build_query(array_merge($_GET, ['period' => 'quarter'])); ?>" class="period-btn <?php echo $period == 'quarter' ? 'active' : ''; ?>">Квартал</a>
-        <a href="?period=year&<?php echo http_build_query(array_merge($_GET, ['period' => 'year'])); ?>" class="period-btn <?php echo $period == 'year' ? 'active' : ''; ?>">Год</a>
-        <a href="?period=custom&<?php echo http_build_query(array_merge($_GET, ['period' => 'custom'])); ?>" class="period-btn <?php echo $period == 'custom' ? 'active' : ''; ?>">Свой</a>
+        <a href="?period=month&<?php echo http_build_query(array_merge($_GET, ['period' => 'month'])); ?>"
+            class="period-btn <?php echo $period == 'month' ? 'active' : ''; ?>">Месяц</a>
+        <a href="?period=quarter&<?php echo http_build_query(array_merge($_GET, ['period' => 'quarter'])); ?>"
+            class="period-btn <?php echo $period == 'quarter' ? 'active' : ''; ?>">Квартал</a>
+        <a href="?period=year&<?php echo http_build_query(array_merge($_GET, ['period' => 'year'])); ?>"
+            class="period-btn <?php echo $period == 'year' ? 'active' : ''; ?>">Год</a>
+        <a href="?period=custom&<?php echo http_build_query(array_merge($_GET, ['period' => 'custom'])); ?>"
+            class="period-btn <?php echo $period == 'custom' ? 'active' : ''; ?>">Свой</a>
     </div>
-    
-    <!-- Period Info -->
-    <div class="filter-section">
-        <div class="small text-muted">Период: <?php echo date('d.m.Y', strtotime($date_from)); ?> - <?php echo date('d.m.Y', strtotime($date_to)); ?></div>
-        <div class="small">Всего операций: <?php echo count($transactions); ?></div>
+
+    <div class="filter-bar bg-white mx-3 mb-3 p-3 rounded-4">
+        <div class="small text-muted">Период: <?php echo date('d.m.Y', strtotime($date_from)); ?> -
+            <?php echo date('d.m.Y', strtotime($date_to)); ?></div>
     </div>
-    
-    <!-- Daily Chart -->
-    <?php if (count($daily_stats) > 0): ?>
-    <div class="chart-container">
-        <div class="chart-title">
-            <i class="bi bi-graph-up"></i> Динамика за последние 7 дней
+
+    <?php if (!empty($daily)): ?>
+        <div class="chart-container">
+            <div class="fw-semibold mb-3"><i class="bi bi-graph-up"></i> Динамика за 7 дней</div>
+            <canvas id="dailyChart" height="200"></canvas>
         </div>
-        <canvas id="dailyChart"></canvas>
-    </div>
     <?php endif; ?>
-    
-    <!-- Top Categories -->
-    <?php if (count($categories_stats) > 0): ?>
-    <div class="chart-container">
-        <div class="chart-title">
-            <i class="bi bi-pie-chart"></i> Топ категорий
-        </div>
-        <div class="category-list">
-            <?php foreach ($categories_stats as $cat): ?>
+
+    <?php if (!empty($categories)): ?>
+        <div class="chart-container">
+            <div class="fw-semibold mb-3"><i class="bi bi-pie-chart"></i> Топ категорий</div>
+            <?php $max = max(array_column($categories, 'total')); ?>
+            <?php foreach ($categories as $cat): ?>
                 <div class="category-item">
-                    <div class="category-header">
-                        <span>
-                            <span style="display: inline-block; width: 10px; height: 10px; background-color: <?php echo $cat['color']; ?>; border-radius: 50%;"></span>
-                            <?php echo htmlspecialchars($cat['name']); ?>
-                        </span>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span><span
+                                style="display:inline-block; width:10px; height:10px; background:<?php echo $cat['color']; ?>; border-radius:50%;"></span>
+                            <?php echo htmlspecialchars($cat['name']); ?></span>
                         <span class="fw-bold"><?php echo number_format($cat['total'], 0, '.', ' '); ?> ₽</span>
                     </div>
                     <div class="progress">
-                        <?php $percent = ($cat['total'] / max($filter_type == 'income' ? $total_income : $total_expense, 1)) * 100; ?>
-                        <div class="progress-bar" style="width: <?php echo $percent; ?>%; background-color: <?php echo $cat['color']; ?>"></div>
+                        <div class="progress-bar"
+                            style="width: <?php echo ($cat['total'] / $max) * 100; ?>%; background: <?php echo $cat['color']; ?>">
+                        </div>
                     </div>
                 </div>
             <?php endforeach; ?>
         </div>
-    </div>
     <?php endif; ?>
-    
-    <!-- Recent Transactions -->
+
     <div class="chart-container">
-        <div class="chart-title">
-            <i class="bi bi-list-ul"></i> Последние операции
-        </div>
+        <div class="fw-semibold mb-3"><i class="bi bi-list-ul"></i> Последние операции</div>
         <div class="transaction-list">
-            <?php if (count($transactions) > 0): ?>
-                <?php foreach (array_slice($transactions, 0, 10) as $t): ?>
-                    <div class="transaction-item">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <div class="small text-muted"><?php echo date('d.m.Y', strtotime($t['transaction_date'])); ?></div>
-                                <div>
-                                    <span class="badge" style="background-color: <?php echo $t['category_color']; ?>"><?php echo htmlspecialchars($t['category_name']); ?></span>
-                                </div>
-                                <div class="small text-muted"><?php echo htmlspecialchars($t['bank_name']); ?></div>
-                            </div>
-                            <div class="text-end">
-                                <div class="<?php echo $t['type'] == 'income' ? 'text-success' : 'text-danger'; ?> fw-bold">
-                                    <?php echo ($t['type'] == 'income' ? '+' : '-') . number_format($t['amount'], 0, '.', ' '); ?> ₽
-                                </div>
-                                <?php if (!empty($t['description'])): ?>
-                                    <div class="small text-muted"><?php echo htmlspecialchars(substr($t['description'], 0, 30)); ?></div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
+            <?php foreach (array_slice($transactions, 0, 10) as $t): ?>
+                <div class="transaction-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small text-muted"><?php echo date('d.m.Y', strtotime($t['transaction_date'])); ?></div>
+                        <span class="badge"
+                            style="background: <?php echo $t['category_color']; ?>"><?php echo htmlspecialchars($t['category_name']); ?></span>
                     </div>
-                <?php endforeach; ?>
-            <?php else: ?>
-                <div class="empty-state">
-                    <div>📭</div>
-                    <p>Нет операций за выбранный период</p>
+                    <div class="fw-bold <?php echo $t['type'] == 'income' ? 'text-success' : 'text-danger'; ?>">
+                        <?php echo ($t['type'] == 'income' ? '+' : '-') . number_format($t['amount'], 0, '.', ' '); ?> ₽
+                    </div>
                 </div>
+            <?php endforeach; ?>
+            <?php if (empty($transactions)): ?>
+                <div class="text-center text-muted py-3">Нет операций</div>
             <?php endif; ?>
         </div>
     </div>
-    
+
+    <a href="?export=1&<?php echo http_build_query($_GET); ?>" class="fab"><i class="bi bi-download"></i></a>
+
+    <div class="mobile-nav">
+        <div class="row g-0">
+            <div class="col-2"><a href="../dashboard.php" class="nav-item"><i
+                        class="bi bi-house-door"></i><span>Главная</span></a></div>
+            <div class="col-2"><a href="finances.php" class="nav-item"><i
+                        class="bi bi-calculator"></i><span>Финансы</span></a></div>
+            <div class="col-2"><a href="accounts.php" class="nav-item"><i class="bi bi-bank"></i><span>Счета</span></a>
+            </div>
+            <div class="col-2"><a href="statistics.php" class="nav-item active"><i
+                        class="bi bi-graph-up"></i><span>Статистика</span></a></div>
+            <div class="col-2"> <a href="transfers.php" class="nav-item"><i
+                        class="bi bi-arrow-left-right"></i><span>Переводы</span></a></div>
+            <div class="col-2"> <a href="../profile.php" class="nav-item"><i
+                        class="bi bi-person"></i><span>Профиль</span></a></div>
+        </div>
+    </div>
+
     <!-- Filter Modal -->
     <div class="modal fade" id="filterModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5>Фильтры</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <h5>Фильтры</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <form method="GET" id="filterForm">
+                <form method="GET">
                     <div class="modal-body">
                         <?php if ($period == 'custom'): ?>
-                        <div class="mb-2">
-                            <label class="form-label">С даты</label>
-                            <input type="date" name="date_from" class="form-control" value="<?php echo $date_from; ?>">
-                        </div>
-                        <div class="mb-2">
-                            <label class="form-label">По дату</label>
-                            <input type="date" name="date_to" class="form-control" value="<?php echo $date_to; ?>">
-                        </div>
+                            <input type="date" name="date_from" class="form-control mb-2" value="<?php echo $date_from; ?>">
+                            <input type="date" name="date_to" class="form-control mb-2" value="<?php echo $date_to; ?>">
                         <?php endif; ?>
                         <input type="hidden" name="period" value="<?php echo $period; ?>">
-                        
-                        <div class="mb-2">
-                            <label class="form-label">Тип</label>
-                            <select name="filter_type" class="form-select">
-                                <option value="all" <?php echo $filter_type == 'all' ? 'selected' : ''; ?>>Все</option>
-                                <option value="income" <?php echo $filter_type == 'income' ? 'selected' : ''; ?>>Доходы</option>
-                                <option value="expense" <?php echo $filter_type == 'expense' ? 'selected' : ''; ?>>Расходы</option>
-                            </select>
-                        </div>
-                        
-                        <div class="mb-2">
-                            <label class="form-label">Категория</label>
-                            <select name="filter_category" class="form-select">
-                                <option value="all">Все</option>
-                                <?php foreach ($categories as $c): ?>
-                                    <option value="<?php echo $c['id']; ?>" <?php echo $filter_category == $c['id'] ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($c['name']); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        
-                        <div class="mb-2">
-                            <label class="form-label">Счет</label>
-                            <select name="filter_account" class="form-select">
-                                <option value="all">Все</option>
-                                <?php foreach ($accounts as $a): ?>
-                                    <option value="<?php echo $a['id']; ?>" <?php echo $filter_account == $a['id'] ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($a['bank_name']); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        
-                        <div class="mb-2">
-                            <label class="form-label">Метка</label>
-                            <input type="text" name="filter_tag" class="form-control" value="<?php echo htmlspecialchars($filter_tag); ?>" placeholder="Поиск по меткам">
-                        </div>
+                        <select name="filter_type" class="form-select mb-2">
+                            <option value="all">Все типы</option>
+                            <option value="income">Доходы</option>
+                            <option value="expense">Расходы</option>
+                        </select>
                     </div>
-                    <div class="modal-footer">
-                        <a href="statistics.php" class="btn btn-secondary">Сбросить</a>
-                        <button type="submit" class="btn btn-primary">Применить</button>
-                    </div>
+                    <div class="modal-footer"><button type="submit"
+                            class="btn btn-primary w-100 rounded-pill">Применить</button></div>
                 </form>
             </div>
         </div>
     </div>
-    
-    <!-- Export Button -->
-    <a href="?export=1&<?php echo http_build_query($_GET); ?>" class="export-btn">
-        <i class="bi bi-download"></i>
-    </a>
-    
-    <!-- Mobile Bottom Navigation -->
-    <div class="mobile-nav">
-        <div class="row g-0">
-            <div class="col-3">
-                <a href="../dashboard.php" class="nav-item">
-                    <i class="bi bi-house-door"></i>
-                    <span>Главная</span>
-                </a>
-            </div>
-            <div class="col-3">
-                <a href="finances.php" class="nav-item">
-                    <i class="bi bi-calculator"></i>
-                    <span>Финансы</span>
-                </a>
-            </div>
-            <div class="col-3">
-                <a href="statistics.php" class="nav-item active">
-                    <i class="bi bi-graph-up-fill"></i>
-                    <span>Статистика</span>
-                </a>
-            </div>
-            <div class="col-3">
-                <a href="../profile.php" class="nav-item">
-                    <i class="bi bi-person"></i>
-                    <span>Профиль</span>
-                </a>
-            </div>
-        </div>
-    </div>
-    
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Фильтр модальное окно
+        document.addEventListener('DOMContentLoaded', function () {
             const filterModal = new bootstrap.Modal(document.getElementById('filterModal'));
-            document.getElementById('filterBtn').onclick = function() {
-                filterModal.show();
-            };
-            
-            // График по дням
-            const dailyData = <?php echo json_encode(array_values($daily_stats)); ?>;
-            
+            document.getElementById('filterBtn').onclick = () => filterModal.show();
+
+            const dailyData = <?php echo json_encode(array_values($daily)); ?>;
             if (dailyData.length > 0) {
-                const ctx = document.getElementById('dailyChart').getContext('2d');
-                new Chart(ctx, {
+                new Chart(document.getElementById('dailyChart'), {
                     type: 'bar',
                     data: {
-                        labels: dailyData.map(item => {
-                            const date = new Date(item.date);
-                            return date.toLocaleDateString('ru-RU', {day: 'numeric', month: 'short'});
-                        }),
+                        labels: dailyData.map(d => new Date(d.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })),
                         datasets: [
-                            {
-                                label: 'Доходы',
-                                data: dailyData.map(item => item.income),
-                                backgroundColor: 'rgba(40, 167, 69, 0.7)',
-                                borderColor: '#28a745',
-                                borderWidth: 1
-                            },
-                            {
-                                label: 'Расходы',
-                                data: dailyData.map(item => item.expense),
-                                backgroundColor: 'rgba(220, 53, 69, 0.7)',
-                                borderColor: '#dc3545',
-                                borderWidth: 1
-                            }
+                            { label: 'Доходы', data: dailyData.map(d => d.income), backgroundColor: 'rgba(40,167,69,0.7)' },
+                            { label: 'Расходы', data: dailyData.map(d => d.expense), backgroundColor: 'rgba(220,53,69,0.7)' }
                         ]
                     },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        plugins: {
-                            legend: {
-                                position: 'top',
-                                labels: { font: { size: 11 } }
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        return `${context.dataset.label}: ${context.raw.toLocaleString('ru-RU')} ₽`;
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: {
-                                    callback: function(value) {
-                                        return value.toLocaleString('ru-RU') + ' ₽';
-                                    },
-                                    font: { size: 10 }
-                                }
-                            },
-                            x: {
-                                ticks: { font: { size: 10 } }
-                            }
-                        }
-                    }
+                    options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'top' } } }
                 });
             }
         });
     </script>
 </body>
+
 </html>

@@ -263,42 +263,13 @@ $transfer_count = count($transfers);
         <div class="row">
             <!-- Sidebar -->
             <div class="col-md-2 p-0">
-                <div class="sidebar">
+                <div>
                     <div class="text-center py-4">
                         <i class="bi bi-wallet2" style="font-size: 48px; color: white;"></i>
                         <h5 class="text-white mt-2"><?php echo htmlspecialchars($_SESSION['username']); ?></h5>
                         <small class="text-white-50">Финансовый дневник</small>
                     </div>
-                    <nav class="nav flex-column px-3">
-                        <a class="nav-link" href="../dashboard.php">
-                            <i class="bi bi-speedometer2"></i> Дашборд
-                        </a>
-                        <a class="nav-link" href="tags.php">
-                            <i class="bi bi-tags"></i> Банк Меток
-                        </a>
-                        <a class="nav-link" href="categories.php">
-                            <i class="bi bi-grid"></i> Банк Категорий
-                        </a>
-                        <a class="nav-link" href="accounts.php">
-                            <i class="bi bi-bank"></i> Справочник Счетов
-                        </a>
-                        <a class="nav-link" href="finances.php">
-                            <i class="bi bi-calculator"></i> Финансы
-                        </a>
-                        <a class="nav-link active" href="transfers.php">
-                            <i class="bi bi-arrow-left-right"></i> Переводы
-                        </a>
-                        <a class="nav-link" href="statistics.php">
-                            <i class="bi bi-graph-up"></i> Статистика
-                        </a>
-                        <hr class="bg-light">
-                        <a class="nav-link" href="../profile.php">
-                            <i class="bi bi-person-circle"></i> Профиль
-                        </a>
-                        <a class="nav-link" href="../logout.php">
-                            <i class="bi bi-box-arrow-right"></i> Выход
-                        </a>
-                    </nav>
+                    
                 </div>
             </div>
             
@@ -504,7 +475,22 @@ $transfer_count = count($transfers);
             </div>
         </div>
     </div>
-    
+        <div class="mobile-nav">
+        <div class="row g-0">
+            <div class="col-2"><a href="../dashboard.php" class="nav-item"><i
+                        class="bi bi-house-door"></i><span>Главная</span></a></div>
+            <div class="col-2"><a href="finances.php" class="nav-item"><i
+                        class="bi bi-calculator"></i><span>Финансы</span></a></div>
+            <div class="col-2"><a href="accounts.php" class="nav-item"><i class="bi bi-bank"></i><span>Счета</span></a>
+            </div>
+            <div class="col-2"><a href="statistics.php" class="nav-item active"><i
+                        class="bi bi-graph-up"></i><span>Статистика</span></a></div>
+            <div class="col-2"> <a href="transfers.php" class="nav-item"><i
+                        class="bi bi-arrow-left-right"></i><span>Переводы</span></a></div>
+            <div class="col-2"> <a href="../profile.php" class="nav-item"><i
+                        class="bi bi-person"></i><span>Профиль</span></a></div>
+        </div>
+    </div>
     <!-- Transfer Modal -->
     <div class="modal fade" id="transferModal" tabindex="-1">
         <div class="modal-dialog">
