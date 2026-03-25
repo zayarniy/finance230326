@@ -13,71 +13,146 @@ $error = '';
 $filter_date_from = $_GET['date_from'] ?? date('Y-m-01');
 $filter_date_to = $_GET['date_to'] ?? date('Y-m-t');
 
+// Функция для логирования
+function logTransfer($message, $data = []) {
+    $logFile = __DIR__ . '/transfer_log.txt';
+    $logEntry = date('Y-m-d H:i:s') . " - " . $message;
+    if (!empty($data)) {
+        $logEntry .= " - " . json_encode($data, JSON_UNESCAPED_UNICODE);
+    }
+    $logEntry .= PHP_EOL;
+    file_put_contents($logFile, $logEntry, FILE_APPEND);
+}
+
+// Обработка действий
+// Обработка действий
 // Обработка действий
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Выполнение перевода
     if (isset($_POST['make_transfer'])) {
-        $from_account_id = $_POST['from_account_id'] ?? 0;
-        $to_account_id = $_POST['to_account_id'] ?? 0;
+        logTransfer("Начало обработки перевода", $_POST);
+        
+        $from_account_id = intval($_POST['from_account_id'] ?? 0);
+        $to_account_id = intval($_POST['to_account_id'] ?? 0);
         $amount = floatval($_POST['amount'] ?? 0);
         $transfer_date = $_POST['transfer_date'] ?? date('Y-m-d H:i:s');
         $description = trim($_POST['description'] ?? '');
-        $template_id = $_POST['template_id'] ?? null;
+        $template_id = !empty($_POST['template_id']) ? intval($_POST['template_id']) : null;
+        
+        logTransfer("Параметры перевода", [
+            'from_account' => $from_account_id,
+            'to_account' => $to_account_id,
+            'amount' => $amount,
+            'transfer_date' => $transfer_date,
+            'description' => $description,
+            'template_id' => $template_id
+        ]);
         
         if ($from_account_id > 0 && $to_account_id > 0 && $amount > 0 && $from_account_id != $to_account_id) {
             try {
                 $pdo->beginTransaction();
+                logTransfer("Транзакция начата");
                 
                 // Проверяем достаточно ли средств
                 $stmt = $pdo->prepare("SELECT current_balance FROM accounts WHERE id = ? AND user_id = ? FOR UPDATE");
                 $stmt->execute([$from_account_id, $user_id]);
                 $from_account = $stmt->fetch();
+                logTransfer("Баланс счета отправителя", ['balance' => $from_account['current_balance'] ?? 'null']);
                 
                 if ($from_account && $from_account['current_balance'] >= $amount) {
                     // Списываем со счета отправителя
                     $stmt = $pdo->prepare("UPDATE accounts SET current_balance = current_balance - ? WHERE id = ? AND user_id = ?");
                     $stmt->execute([$amount, $from_account_id, $user_id]);
+                    logTransfer("Списано со счета $from_account_id: $amount");
                     
                     // Зачисляем на счет получателя
                     $stmt = $pdo->prepare("UPDATE accounts SET current_balance = current_balance + ? WHERE id = ? AND user_id = ?");
                     $stmt->execute([$amount, $to_account_id, $user_id]);
+                    logTransfer("Зачислено на счет $to_account_id: $amount");
                     
-                    // Получаем категорию "Перевод"
-                    $stmt = $pdo->prepare("SELECT id FROM categories WHERE user_id = ? AND name = 'Перевод' AND type = 'transfer' LIMIT 1");
+                    // Получаем или создаем категорию "Перевод" (как расход)
+                    $stmt = $pdo->prepare("SELECT id FROM categories WHERE user_id = ? AND name = 'Перевод' AND type = 'expense' LIMIT 1");
                     $stmt->execute([$user_id]);
                     $category = $stmt->fetch();
                     
                     if (!$category) {
-                        $stmt = $pdo->prepare("INSERT INTO categories (user_id, name, color, type) VALUES (?, 'Перевод', '#6c757d', 'transfer')");
+                        // Проверяем, существует ли категория с таким названием любого типа
+                        $stmt = $pdo->prepare("SELECT id FROM categories WHERE user_id = ? AND name = 'Перевод'");
                         $stmt->execute([$user_id]);
-                        $category_id = $pdo->lastInsertId();
+                        $existing = $stmt->fetch();
+                        
+                        if ($existing) {
+                            $category_id = $existing['id'];
+                            logTransfer("Используем существующую категорию 'Перевод' с ID: $category_id");
+                        } else {
+                            // Создаем новую категорию с типом 'expense'
+                            $stmt = $pdo->prepare("INSERT INTO categories (user_id, name, color, type) VALUES (?, 'Перевод', '#6c757d', 'expense')");
+                            $stmt->execute([$user_id]);
+                            $category_id = $pdo->lastInsertId();
+                            logTransfer("Создана новая категория 'Перевод' (expense) с ID: $category_id");
+                        }
                     } else {
                         $category_id = $category['id'];
+                        logTransfer("Найдена категория 'Перевод' (expense) с ID: $category_id");
+                    }
+                    
+                    // Проверяем, существует ли шаблон, если указан
+                    $valid_template_id = null;
+                    if ($template_id) {
+                        $stmt = $pdo->prepare("SELECT id FROM transfer_templates WHERE id = ? AND user_id = ?");
+                        $stmt->execute([$template_id, $user_id]);
+                        if ($stmt->fetch()) {
+                            $valid_template_id = $template_id;
+                            logTransfer("Шаблон ID $template_id найден");
+                        } else {
+                            logTransfer("Шаблон ID $template_id не найден, сохраняем как NULL");
+                        }
                     }
                     
                     // Создаем запись о переводе
                     $stmt = $pdo->prepare("INSERT INTO transfers (user_id, from_account_id, to_account_id, amount, transfer_date, description, template_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                    $stmt->execute([$user_id, $from_account_id, $to_account_id, $amount, $transfer_date, $description, $template_id]);
+                    $stmt->execute([$user_id, $from_account_id, $to_account_id, $amount, $transfer_date, $description, $valid_template_id]);
+                    $transfer_id = $pdo->lastInsertId();
+                    logTransfer("Создана запись перевода ID: $transfer_id");
                     
-                    // Создаем две транзакции
+                    // Создаем транзакцию расхода со счета отправителя
                     $stmt = $pdo->prepare("INSERT INTO transactions (user_id, account_id, category_id, type, amount, transaction_date, description) VALUES (?, ?, ?, 'expense', ?, ?, ?)");
                     $stmt->execute([$user_id, $from_account_id, $category_id, $amount, $transfer_date, "Перевод: " . $description]);
+                    logTransfer("Создана транзакция расхода для счета $from_account_id");
                     
+                    // Создаем транзакцию дохода на счет получателя
                     $stmt = $pdo->prepare("INSERT INTO transactions (user_id, account_id, category_id, type, amount, transaction_date, description) VALUES (?, ?, ?, 'income', ?, ?, ?)");
                     $stmt->execute([$user_id, $to_account_id, $category_id, $amount, $transfer_date, "Перевод: " . $description]);
+                    logTransfer("Создана транзакция дохода для счета $to_account_id");
                     
                     $pdo->commit();
-                    header("Location: transfers.php");
+                    logTransfer("Транзакция успешно завершена");
+                    header("Location: transfers.php?success=1");
                     exit;
                 } else {
-                    $error = "Недостаточно средств";
+                    $pdo->rollBack();
+                    $error = "Недостаточно средств на счете отправителя";
+                    logTransfer("ОШИБКА: Недостаточно средств", [
+                        'balance' => $from_account['current_balance'] ?? 'unknown',
+                        'amount' => $amount
+                    ]);
                 }
             } catch (PDOException $e) {
                 $pdo->rollBack();
-                $error = "Ошибка при переводе";
+                $error = "Ошибка при выполнении перевода: " . $e->getMessage();
+                logTransfer("ОШИБКА PDO: " . $e->getMessage(), [
+                    'code' => $e->getCode(),
+                    'trace' => $e->getTraceAsString()
+                ]);
             }
         } else {
-            $error = "Заполните все поля";
+            $error = "Заполните все поля корректно";
+            logTransfer("ОШИБКА валидации", [
+                'from_account' => $from_account_id,
+                'to_account' => $to_account_id,
+                'amount' => $amount,
+                'same_account' => $from_account_id == $to_account_id
+            ]);
         }
     }
     
@@ -95,7 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header("Location: transfers.php");
             exit;
         } else {
-            $error = "Заполните все поля";
+            $error = "Заполните все поля шаблона";
         }
     }
     
@@ -128,6 +203,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Проверка успешного перевода
+if (isset($_GET['success'])) {
+    $message = "Перевод успешно выполнен";
+}
+
 // Получение списка счетов
 $stmt = $pdo->prepare("SELECT * FROM accounts WHERE user_id = ? AND is_active = 1 ORDER BY bank_name");
 $stmt->execute([$user_id]);
@@ -139,7 +219,13 @@ $stmt->execute([$user_id]);
 $templates = $stmt->fetchAll();
 
 // Получение истории переводов
-$sql = "SELECT t.*, a1.bank_name as from_bank, a2.bank_name as to_bank, tmp.template_name FROM transfers t LEFT JOIN accounts a1 ON t.from_account_id = a1.id LEFT JOIN accounts a2 ON t.to_account_id = a2.id LEFT JOIN transfer_templates tmp ON t.template_id = tmp.id WHERE t.user_id = ? AND DATE(t.transfer_date) BETWEEN ? AND ? ORDER BY t.transfer_date DESC";
+$sql = "SELECT t.*, a1.bank_name as from_bank, a2.bank_name as to_bank, tmp.template_name 
+        FROM transfers t 
+        LEFT JOIN accounts a1 ON t.from_account_id = a1.id 
+        LEFT JOIN accounts a2 ON t.to_account_id = a2.id 
+        LEFT JOIN transfer_templates tmp ON t.template_id = tmp.id 
+        WHERE t.user_id = ? AND DATE(t.transfer_date) BETWEEN ? AND ? 
+        ORDER BY t.transfer_date DESC";
 $stmt = $pdo->prepare($sql);
 $stmt->execute([$user_id, $filter_date_from, $filter_date_to]);
 $transfers = $stmt->fetchAll();
@@ -147,6 +233,7 @@ $transfers = $stmt->fetchAll();
 $total_transferred = array_sum(array_column($transfers, 'amount'));
 $transfer_count = count($transfers);
 ?>
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -154,7 +241,6 @@ $transfer_count = count($transfers);
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <meta name="theme-color" content="#667eea">
     <title>Переводы - Финансовый дневник</title>
-    <link rel="icon" type="image/png" href="../favicon.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
@@ -177,6 +263,7 @@ $transfer_count = count($transfers);
             text-decoration: none;
             font-size: 14px;
             display: inline-block;
+            cursor: pointer;
         }
         
         .stats-grid {
@@ -300,15 +387,7 @@ $transfer_count = count($transfers);
             color: #6c757d;
         }
         
-        .btn-sm {
-            padding: 6px 12px;
-            border-radius: 20px;
-        }
-        
-        .template-actions {
-            display: flex;
-            gap: 8px;
-        }
+        .alert { border-radius: 16px; margin: 0 16px 16px; }
     </style>
 </head>
 <body>
@@ -320,6 +399,20 @@ $transfer_count = count($transfers);
         <div class="page-title fs-3 fw-bold mt-2">Переводы</div>
         <div class="small">Переводы между счетами</div>
     </div>
+    
+    <?php if ($message): ?>
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="bi bi-check-circle"></i> <?php echo htmlspecialchars($message); ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+    
+    <?php if ($error): ?>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle"></i> <?php echo htmlspecialchars($error); ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
     
     <div class="stats-grid">
         <div class="stat-card">
@@ -351,7 +444,7 @@ $transfer_count = count($transfers);
                             </div>
                             <div class="small fw-bold mt-1"><?php echo number_format($t['amount'], 0, '.', ' '); ?> ₽</div>
                         </div>
-                        <div class="template-actions">
+                        <div class="d-flex gap-2">
                             <button class="btn btn-sm btn-outline-primary edit-template" data-id="<?php echo $t['id']; ?>" data-name="<?php echo htmlspecialchars($t['template_name']); ?>" data-from="<?php echo $t['from_account_id']; ?>" data-to="<?php echo $t['to_account_id']; ?>" data-amount="<?php echo $t['amount']; ?>" data-desc="<?php echo htmlspecialchars($t['description'] ?? ''); ?>">
                                 <i class="bi bi-pencil"></i>
                             </button>
@@ -406,18 +499,10 @@ $transfer_count = count($transfers);
     
     <div class="mobile-nav">
         <div class="row g-0">
-            <div class="col-2"><a href="../dashboard.php" class="nav-item"><i
-                        class="bi bi-house-door"></i><span>Главная</span></a></div>
-            <div class="col-2"><a href="finances.php" class="nav-item"><i
-                        class="bi bi-calculator"></i><span>Финансы</span></a></div>
-            <div class="col-2"><a href="accounts.php" class="nav-item"><i class="bi bi-bank"></i><span>Счета</span></a>
-            </div>
-            <div class="col-2"><a href="statistics.php" class="nav-item"><i
-                        class="bi bi-graph-up"></i><span>Статистика</span></a></div>
-            <div class="col-2"> <a href="transfers.php" class="nav-item active"><i
-                        class="bi bi-arrow-left-right"></i><span>Переводы</span></a></div>
-            <div class="col-2"> <a href="../profile.php" class="nav-item"><i
-                        class="bi bi-person"></i><span>Профиль</span></a></div>
+            <div class="col-3"><a href="../dashboard.php" class="nav-item"><i class="bi bi-house-door"></i><span>Главная</span></a></div>
+            <div class="col-3"><a href="finances.php" class="nav-item"><i class="bi bi-calculator"></i><span>Финансы</span></a></div>
+            <div class="col-3"><a href="debts.php" class="nav-item"><i class="bi bi-credit-card-2-front"></i><span>Долги</span></a></div>
+            <div class="col-3"><a href="transfers.php" class="nav-item active"><i class="bi bi-arrow-left-right-fill"></i><span>Переводы</span></a></div>
         </div>
     </div>
     
@@ -439,24 +524,24 @@ $transfer_count = count($transfers);
     <div class="modal fade" id="transferModal" tabindex="-1">
         <div class="modal-dialog"><div class="modal-content">
             <div class="modal-header"><h5>Новый перевод</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-            <form method="POST">
+            <form method="POST" id="transferForm">
                 <div class="modal-body">
                     <input type="hidden" name="template_id" id="templateId">
-                    <select name="from_account_id" class="form-select mb-2" required>
-                        <option value="">Счет списания</option>
+                    <select name="from_account_id" class="form-select mb-2" id="fromAccount" required>
+                        <option value="">Счет списания *</option>
                         <?php foreach ($accounts as $a): ?>
                             <option value="<?php echo $a['id']; ?>" data-balance="<?php echo $a['current_balance']; ?>">
                                 <?php echo htmlspecialchars($a['bank_name']); ?> (<?php echo number_format($a['current_balance'], 0, '.', ' '); ?> ₽)
                             </option>
                         <?php endforeach; ?>
                     </select>
-                    <select name="to_account_id" class="form-select mb-2" required>
-                        <option value="">Счет зачисления</option>
+                    <select name="to_account_id" class="form-select mb-2" id="toAccount" required>
+                        <option value="">Счет зачисления *</option>
                         <?php foreach ($accounts as $a): ?>
                             <option value="<?php echo $a['id']; ?>"><?php echo htmlspecialchars($a['bank_name']); ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <input type="number" name="amount" class="form-control mb-2" placeholder="Сумма" step="0.01" required>
+                    <input type="number" name="amount" class="form-control mb-2" id="transferAmount" placeholder="Сумма *" step="0.01" required>
                     <input type="datetime-local" name="transfer_date" class="form-control mb-2" value="<?php echo date('Y-m-d\TH:i'); ?>" required>
                     <textarea name="description" class="form-control mb-2" rows="2" placeholder="Описание"></textarea>
                     <div class="text-danger small" id="balanceWarning" style="display: none;"></div>
@@ -473,20 +558,20 @@ $transfer_count = count($transfers);
             <form method="POST">
                 <div class="modal-body">
                     <input type="hidden" name="template_id" id="templateIdField">
-                    <input type="text" name="template_name" class="form-control mb-2" placeholder="Название шаблона" required>
+                    <input type="text" name="template_name" class="form-control mb-2" placeholder="Название шаблона *" required>
                     <select name="template_from_account" class="form-select mb-2" required>
-                        <option value="">Счет списания</option>
+                        <option value="">Счет списания *</option>
                         <?php foreach ($accounts as $a): ?>
                             <option value="<?php echo $a['id']; ?>"><?php echo htmlspecialchars($a['bank_name']); ?></option>
                         <?php endforeach; ?>
                     </select>
                     <select name="template_to_account" class="form-select mb-2" required>
-                        <option value="">Счет зачисления</option>
+                        <option value="">Счет зачисления *</option>
                         <?php foreach ($accounts as $a): ?>
                             <option value="<?php echo $a['id']; ?>"><?php echo htmlspecialchars($a['bank_name']); ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <input type="number" name="template_amount" class="form-control mb-2" placeholder="Сумма" step="0.01" required>
+                    <input type="number" name="template_amount" class="form-control mb-2" placeholder="Сумма *" step="0.01" required>
                     <textarea name="template_description" class="form-control mb-2" rows="2" placeholder="Описание"></textarea>
                 </div>
                 <div class="modal-footer"><button type="submit" name="save_template" class="btn btn-primary w-100 rounded-pill" id="templateSubmitBtn">Сохранить</button></div>
@@ -599,23 +684,59 @@ $transfer_count = count($transfers);
                 document.getElementById('templateSubmitBtn').innerHTML = 'Сохранить';
             }
             
-            document.querySelector('#transferModal select[name="from_account_id"]').addEventListener('change', checkBalance);
-            document.querySelector('#transferModal input[name="amount"]').addEventListener('input', checkBalance);
+            // Обработчики для проверки баланса
+            const fromSelect = document.querySelector('#transferModal select[name="from_account_id"]');
+            const amountInput = document.querySelector('#transferModal input[name="amount"]');
+            if (fromSelect) fromSelect.addEventListener('change', checkBalance);
+            if (amountInput) amountInput.addEventListener('input', checkBalance);
             
             // Запрет перевода на тот же счет
-            const fromSelect = document.querySelector('#transferModal select[name="from_account_id"]');
-            const toSelect = document.querySelector('#transferModal select[name="to_account_id"]');
+            const fromAccount = document.getElementById('fromAccount');
+            const toAccount = document.getElementById('toAccount');
             
             function preventSameAccount() {
-                if (fromSelect.value && toSelect.value && fromSelect.value === toSelect.value) {
-                    alert('Нельзя перевести на тот же счет!');
-                    toSelect.value = '';
+                if (fromAccount && toAccount && fromAccount.value && toAccount.value && fromAccount.value === toAccount.value) {
+                    alert('Нельзя перевести деньги на тот же счет!');
+                    toAccount.value = '';
                 }
             }
             
-            fromSelect.addEventListener('change', preventSameAccount);
-            toSelect.addEventListener('change', preventSameAccount);
+            if (fromAccount) fromAccount.addEventListener('change', preventSameAccount);
+            if (toAccount) toAccount.addEventListener('change', preventSameAccount);
+            
+            // Отправка формы с проверкой
+            const transferForm = document.getElementById('transferForm');
+            if (transferForm) {
+                transferForm.addEventListener('submit', function(e) {
+                    if (!checkBalance()) {
+                        e.preventDefault();
+                        alert('Недостаточно средств на счете!');
+                        return false;
+                    }
+                    
+                    const fromVal = fromAccount ? fromAccount.value : '';
+                    const toVal = toAccount ? toAccount.value : '';
+                    const amount = document.querySelector('#transferModal input[name="amount"]')?.value;
+                    
+                    if (!fromVal || !toVal || !amount || amount <= 0) {
+                        e.preventDefault();
+                        alert('Пожалуйста, заполните все поля!');
+                        return false;
+                    }
+                    
+                    return true;
+                });
+            }
         });
+
+        function resetTransferForm() {
+    const form = document.querySelector('#transferModal form');
+    if (form) form.reset();
+    const templateIdField = document.getElementById('templateId');
+    if (templateIdField) templateIdField.value = '';
+    const warning = document.getElementById('balanceWarning');
+    if (warning) warning.style.display = 'none';
+}
     </script>
 </body>
 </html>
