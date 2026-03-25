@@ -499,10 +499,18 @@ $transfer_count = count($transfers);
     
     <div class="mobile-nav">
         <div class="row g-0">
-            <div class="col-3"><a href="../dashboard.php" class="nav-item"><i class="bi bi-house-door"></i><span>Главная</span></a></div>
-            <div class="col-3"><a href="finances.php" class="nav-item"><i class="bi bi-calculator"></i><span>Финансы</span></a></div>
-            <div class="col-3"><a href="debts.php" class="nav-item"><i class="bi bi-credit-card-2-front"></i><span>Долги</span></a></div>
-            <div class="col-3"><a href="transfers.php" class="nav-item active"><i class="bi bi-arrow-left-right-fill"></i><span>Переводы</span></a></div>
+            <div class="col-2"><a href="../dashboard.php" class="nav-item"><i
+                        class="bi bi-house-door"></i><span>Главная</span></a></div>
+            <div class="col-2"><a href="finances.php" class="nav-item"><i
+                        class="bi bi-calculator"></i><span>Финансы</span></a></div>
+            <div class="col-2"><a href="accounts.php" class="nav-item"><i class="bi bi-bank"></i><span>Счета</span></a>
+            </div>
+            <div class="col-2"><a href="statistics.php" class="nav-item"><i
+                        class="bi bi-graph-up"></i><span>Статистика</span></a></div>
+            <div class="col-2"> <a href="transfers.php" class="nav-item active"><i
+                        class="bi bi-arrow-left-right"></i><span>Переводы</span></a></div>
+            <div class="col-2"> <a href="../profile.php" class="nav-item"><i
+                        class="bi bi-person"></i><span>Профиль</span></a></div>
         </div>
     </div>
     
