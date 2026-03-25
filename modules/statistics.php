@@ -250,6 +250,46 @@ $daily = array_slice($daily, -7, 7);
             border-radius: 30px;
             padding: 12px 16px;
         }
+
+        .nav-scroll {
+            display: flex;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            gap: 4px;
+            padding: 0 8px;
+        }
+
+        .nav-scroll::-webkit-scrollbar {
+            display: none;
+        }
+
+        .nav-scroll .nav-item {
+            flex: 0 0 auto;
+            min-width: 70px;
+            text-align: center;
+            padding: 8px 0;
+            color: #6c757d;
+            text-decoration: none;
+            display: block;
+        }
+
+        .nav-scroll .nav-item.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 12px;
+        }
+
+        .nav-scroll .nav-item i {
+            font-size: 20px;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .nav-scroll .nav-item span {
+            font-size: 10px;
+            white-space: nowrap;
+        }
     </style>
 </head>
 
@@ -294,7 +334,8 @@ $daily = array_slice($daily, -7, 7);
 
     <div class="filter-bar bg-white mx-3 mb-3 p-3 rounded-4">
         <div class="small text-muted">Период: <?php echo date('d.m.Y', strtotime($date_from)); ?> -
-            <?php echo date('d.m.Y', strtotime($date_to)); ?></div>
+            <?php echo date('d.m.Y', strtotime($date_to)); ?>
+        </div>
     </div>
 
     <?php if (!empty($daily)): ?>
@@ -350,21 +391,38 @@ $daily = array_slice($daily, -7, 7);
     <a href="?export=1&<?php echo http_build_query($_GET); ?>" class="fab"><i class="bi bi-download"></i></a>
 
     <div class="mobile-nav">
-        <div class="row g-0">
-            <div class="col-2"><a href="../dashboard.php" class="nav-item"><i
-                        class="bi bi-house-door"></i><span>Главная</span></a></div>
-            <div class="col-2"><a href="finances.php" class="nav-item"><i
-                        class="bi bi-calculator"></i><span>Финансы</span></a></div>
-            <div class="col-2"><a href="accounts.php" class="nav-item"><i class="bi bi-bank"></i><span>Счета</span></a>
-            </div>
-            <div class="col-2"><a href="statistics.php" class="nav-item active"><i
-                        class="bi bi-graph-up"></i><span>Статистика</span></a></div>
-            <div class="col-2"> <a href="transfers.php" class="nav-item"><i
-                        class="bi bi-arrow-left-right"></i><span>Переводы</span></a></div>
-            <div class="col-2"> <a href="../profile.php" class="nav-item"><i
-                        class="bi bi-person"></i><span>Профиль</span></a></div>
+        <div class="nav-scroll">
+            <a href="../dashboard.php" class="nav-item">
+                <i class="bi bi-house-door"></i>
+                <span>Главная</span>
+            </a>
+            <a href="finances.php" class="nav-item">
+                <i class="bi bi-calculator"></i>
+                <span>Финансы</span>
+            </a>
+            <a href="accounts.php" class="nav-item">
+                <i class="bi bi-bank"></i>
+                <span>Счета</span>
+            </a>
+            <a href="statistics.php" class="nav-item active">
+                <i class="bi bi-graph-up"></i>
+                <span>Статистика</span>
+            </a>
+            <a href="transfers.php" class="nav-item">
+                <i class="bi bi-arrow-left-right"></i>
+                <span>Переводы</span>
+            </a>
+            <a href="debts.php" class="nav-item">
+                <i class="bi bi-credit-card-2-front"></i>
+                <span>Долги</span>
+            </a>
+            <a href="../profile.php" class="nav-item">
+                <i class="bi bi-person"></i>
+                <span>Профиль</span>
+            </a>
         </div>
     </div>
+
 
     <!-- Filter Modal -->
     <div class="modal fade" id="filterModal" tabindex="-1">
