@@ -16,7 +16,8 @@ $filter_date_to = $_GET['date_to'] ?? date('Y-m-t');
 $filter_category = $_GET['category'] ?? 'all';
 $filter_account = $_GET['account'] ?? 'all';
 $filter_tag = $_GET['tag'] ?? '';
-$exclude_transfers = isset($_GET['exclude_transfers']) && $_GET['exclude_transfers'] == '1';
+// По умолчанию исключаем переводы (show_transfers = 0)
+$show_transfers = isset($_GET['show_transfers']) && $_GET['show_transfers'] == '1';
 
 // Обработка действий
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -149,10 +150,15 @@ $sql = "SELECT t.*, c.name as category_name, c.color as category_color, a.accoun
         WHERE t.user_id = ?";
 $params = [$user_id];
 
-// Фильтр по типу
+// Фильтр по типу (если выбран конкретный тип)
 if ($filter_type !== 'all') {
     $sql .= " AND t.type = ?";
     $params[] = $filter_type;
+} else {
+    // Если не выбран конкретный тип, по умолчанию исключаем переводы
+    if (!$show_transfers) {
+        $sql .= " AND t.type != 'transfer' AND t.description NOT LIKE '%Перевод%'";
+    }
 }
 
 // Фильтр по дате
@@ -180,11 +186,6 @@ if (!empty($filter_tag)) {
     $params[] = "%$filter_tag%";
 }
 
-// Исключение переводов по чекбоксу
-if ($exclude_transfers) {
-    $sql .= " AND (t.type != 'transfer' AND t.description NOT LIKE '%Перевод%')";
-}
-
 $sql .= " ORDER BY t.transaction_date DESC, t.created_at DESC";
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
@@ -203,7 +204,7 @@ $stmt = $pdo->prepare("SELECT * FROM tags WHERE user_id = ? ORDER BY name");
 $stmt->execute([$user_id]);
 $tags = $stmt->fetchAll();
 
-// Статистика (исключаем переводы для общего учета)
+// Статистика (по умолчанию исключаем переводы)
 $stats_sql = "SELECT 
         SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as total_income,
         SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as total_expense
@@ -212,7 +213,11 @@ $stats_sql = "SELECT
     AND transaction_date BETWEEN ? AND ?";
 $stats_params = [$user_id, $filter_date_from, $filter_date_to];
 
-if ($exclude_transfers) {
+// Если не выбран конкретный тип, исключаем переводы из статистики
+if ($filter_type === 'all' && !$show_transfers) {
+    $stats_sql .= " AND (type != 'transfer' AND description NOT LIKE '%Перевод%')";
+} elseif ($filter_type !== 'all' && $filter_type !== 'transfer') {
+    // Если выбран доход или расход, исключаем переводы
     $stats_sql .= " AND (type != 'transfer' AND description NOT LIKE '%Перевод%')";
 }
 
@@ -452,6 +457,11 @@ $balance = $total_income - $total_expense;
             display: inline-block;
             margin-right: 4px;
         }
+        
+        .badge-info {
+            background-color: #17a2b8;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -485,19 +495,22 @@ $balance = $total_income - $total_expense;
     <div class="filter-bar">
         <div class="small text-muted mb-2">
             Период: <?php echo date('d.m.Y', strtotime($filter_date_from)); ?> - <?php echo date('d.m.Y', strtotime($filter_date_to)); ?>
-            <?php if ($exclude_transfers): ?>
-                <span class="badge bg-info ms-2">Переводы исключены</span>
+            <?php if ($filter_type === 'all' && !$show_transfers): ?>
+                <span class="badge badge-info ms-2">Переводы исключены</span>
+            <?php endif; ?>
+            <?php if ($show_transfers): ?>
+                <span class="badge bg-secondary ms-2">Показаны переводы</span>
             <?php endif; ?>
         </div>
         <div class="filter-chips">
-            <a href="?type=all&date_from=<?php echo $filter_date_from; ?>&date_to=<?php echo $filter_date_to; ?>&exclude_transfers=<?php echo $exclude_transfers ? '1' : '0'; ?>" class="filter-chip <?php echo $filter_type == 'all' ? 'active' : ''; ?>">Все</a>
-            <a href="?type=income&date_from=<?php echo $filter_date_from; ?>&date_to=<?php echo $filter_date_to; ?>&exclude_transfers=<?php echo $exclude_transfers ? '1' : '0'; ?>" class="filter-chip <?php echo $filter_type == 'income' ? 'active' : ''; ?>">Доходы</a>
-            <a href="?type=expense&date_from=<?php echo $filter_date_from; ?>&date_to=<?php echo $filter_date_to; ?>&exclude_transfers=<?php echo $exclude_transfers ? '1' : '0'; ?>" class="filter-chip <?php echo $filter_type == 'expense' ? 'active' : ''; ?>">Расходы</a>
-            <a href="?type=transfer&date_from=<?php echo $filter_date_from; ?>&date_to=<?php echo $filter_date_to; ?>&exclude_transfers=0" class="filter-chip <?php echo $filter_type == 'transfer' ? 'active' : ''; ?>">Переводы</a>
+            <a href="?type=all&date_from=<?php echo $filter_date_from; ?>&date_to=<?php echo $filter_date_to; ?>&show_transfers=<?php echo $show_transfers ? '1' : '0'; ?>" class="filter-chip <?php echo $filter_type == 'all' ? 'active' : ''; ?>">Все</a>
+            <a href="?type=income&date_from=<?php echo $filter_date_from; ?>&date_to=<?php echo $filter_date_to; ?>&show_transfers=<?php echo $show_transfers ? '1' : '0'; ?>" class="filter-chip <?php echo $filter_type == 'income' ? 'active' : ''; ?>">Доходы</a>
+            <a href="?type=expense&date_from=<?php echo $filter_date_from; ?>&date_to=<?php echo $filter_date_to; ?>&show_transfers=<?php echo $show_transfers ? '1' : '0'; ?>" class="filter-chip <?php echo $filter_type == 'expense' ? 'active' : ''; ?>">Расходы</a>
+            <a href="?type=transfer&date_from=<?php echo $filter_date_from; ?>&date_to=<?php echo $filter_date_to; ?>&show_transfers=1" class="filter-chip <?php echo $filter_type == 'transfer' ? 'active' : ''; ?>">Переводы</a>
         </div>
         <div class="filter-checkbox">
-            <input type="checkbox" id="excludeTransfers" <?php echo $exclude_transfers ? 'checked' : ''; ?> onchange="toggleExcludeTransfers()">
-            <label for="excludeTransfers">Не учитывать переводы в доходах и расходах</label>
+            <input type="checkbox" id="showTransfers" <?php echo $show_transfers ? 'checked' : ''; ?> onchange="toggleShowTransfers()">
+            <label for="showTransfers">Показывать переводы в списке и статистике</label>
         </div>
     </div>
     
@@ -588,9 +601,9 @@ $balance = $total_income - $total_expense;
                     </select>
                     <input type="text" name="tag" class="form-control mb-2" placeholder="Метка" value="<?php echo htmlspecialchars($filter_tag); ?>">
                     <div class="form-check mt-2">
-                        <input type="checkbox" name="exclude_transfers" id="modalExcludeTransfers" class="form-check-input" value="1" <?php echo $exclude_transfers ? 'checked' : ''; ?>>
-                        <label class="form-check-label" for="modalExcludeTransfers">
-                            Не учитывать переводы в доходах и расходах
+                        <input type="checkbox" name="show_transfers" id="modalShowTransfers" class="form-check-input" value="1" <?php echo $show_transfers ? 'checked' : ''; ?>>
+                        <label class="form-check-label" for="modalShowTransfers">
+                            Показывать переводы в списке и статистике
                         </label>
                     </div>
                 </div>
@@ -764,13 +777,18 @@ $balance = $total_income - $total_expense;
             if (amountInput) amountInput.addEventListener('input', checkBalance);
         });
         
-        function toggleExcludeTransfers() {
-            const checkbox = document.getElementById('excludeTransfers');
+        function toggleShowTransfers() {
+            const checkbox = document.getElementById('showTransfers');
             const currentUrl = new URL(window.location.href);
             if (checkbox.checked) {
-                currentUrl.searchParams.set('exclude_transfers', '1');
+                currentUrl.searchParams.set('show_transfers', '1');
             } else {
-                currentUrl.searchParams.delete('exclude_transfers');
+                currentUrl.searchParams.delete('show_transfers');
+            }
+            // Сохраняем текущий тип фильтра
+            const currentType = '<?php echo $filter_type; ?>';
+            if (currentType !== 'all') {
+                currentUrl.searchParams.set('type', currentType);
             }
             window.location.href = currentUrl.toString();
         }
