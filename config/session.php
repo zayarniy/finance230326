@@ -21,7 +21,7 @@ if (isset($_SESSION['user_id'])) {
     }
     
     // Автоматический выход через 24 часа бездействия
-    $inactive = 86400; // 24 часа
+    $inactive = 86400/24; // 24 часа
     if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > $inactive)) {
         session_unset();
         session_destroy();

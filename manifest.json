@@ -1,7 +1,7 @@
 {
   "name": "Финансовые дневник",
   "short_name": "Финансовые дневник",
-  "start_url": "/",
+  "start_url": "/finance/login.php",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#000000",
