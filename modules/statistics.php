@@ -22,8 +22,32 @@ $filter_tag = $_GET['filter_tag'] ?? '';
 // По умолчанию исключаем переводы (show_transfers = 0)
 $show_transfers = isset($_GET['show_transfers']) && $_GET['show_transfers'] == '1';
 
+// Функция для получения дат недели
+function getWeekDates($date = null) {
+    $current_date = $date ? new DateTime($date) : new DateTime();
+    $day_of_week = $current_date->format('N'); // 1 (понедельник) - 7 (воскресенье)
+    
+    // Находим понедельник
+    $monday = clone $current_date;
+    $monday->modify('-' . ($day_of_week - 1) . ' days');
+    
+    // Находим воскресенье
+    $sunday = clone $monday;
+    $sunday->modify('+6 days');
+    
+    return [
+        'start' => $monday->format('Y-m-d'),
+        'end' => $sunday->format('Y-m-d')
+    ];
+}
+
 // Установка периода
 switch ($period) {
+    case 'week':
+        $week_dates = getWeekDates();
+        $date_from = $week_dates['start'];
+        $date_to = $week_dates['end'];
+        break;
     case 'month':
         $date_from = date('Y-m-01');
         $date_to = date('Y-m-t');
@@ -36,6 +60,9 @@ switch ($period) {
     case 'year':
         $date_from = date('Y-01-01');
         $date_to = date('Y-12-31');
+        break;
+    case 'custom':
+        // Даты уже установлены из GET параметров
         break;
 }
 
@@ -377,6 +404,18 @@ if (isset($_GET['export'])) {
             color: white;
         }
 
+        .date-range {
+            background: white;
+            margin: 0 16px 16px;
+            border-radius: 20px;
+            padding: 12px;
+            display: none;
+        }
+
+        .date-range.active {
+            display: block;
+        }
+
         .filter-bar {
             background: white;
             margin: 0 16px 16px;
@@ -568,6 +607,8 @@ if (isset($_GET['export'])) {
     </div>
 
     <div class="period-bar">
+        <a href="<?php echo buildFilterUrl(['period' => 'week']); ?>"
+            class="period-btn <?php echo $period == 'week' ? 'active' : ''; ?>">Неделя</a>
         <a href="<?php echo buildFilterUrl(['period' => 'month']); ?>"
             class="period-btn <?php echo $period == 'month' ? 'active' : ''; ?>">Месяц</a>
         <a href="<?php echo buildFilterUrl(['period' => 'quarter']); ?>"
@@ -576,6 +617,27 @@ if (isset($_GET['export'])) {
             class="period-btn <?php echo $period == 'year' ? 'active' : ''; ?>">Год</a>
         <a href="<?php echo buildFilterUrl(['period' => 'custom']); ?>"
             class="period-btn <?php echo $period == 'custom' ? 'active' : ''; ?>">Свой</a>
+    </div>
+
+    <!-- Блок выбора дат для произвольного периода -->
+    <div class="date-range <?php echo $period == 'custom' ? 'active' : ''; ?>" id="dateRange">
+        <form method="GET" class="row g-2">
+            <input type="hidden" name="period" value="custom">
+            <input type="hidden" name="filter_type" value="<?php echo $filter_type; ?>">
+            <input type="hidden" name="filter_category" value="<?php echo $filter_category; ?>">
+            <input type="hidden" name="filter_account" value="<?php echo $filter_account; ?>">
+            <input type="hidden" name="filter_tag" value="<?php echo $filter_tag; ?>">
+            <input type="hidden" name="show_transfers" value="<?php echo $show_transfers ? '1' : '0'; ?>">
+            <div class="col-5">
+                <input type="date" name="date_from" class="form-control" value="<?php echo $date_from; ?>">
+            </div>
+            <div class="col-5">
+                <input type="date" name="date_to" class="form-control" value="<?php echo $date_to; ?>">
+            </div>
+            <div class="col-2">
+                <button type="submit" class="btn btn-primary w-100 rounded-pill">OK</button>
+            </div>
+        </form>
     </div>
 
     <div class="filter-bar">
@@ -765,7 +827,6 @@ if (isset($_GET['export'])) {
                             </select>
                         </div>
                         
-
                         <div class="form-check mt-2">
                             <input type="checkbox" name="show_transfers" id="modalShowTransfers"
                                 class="form-check-input" value="1" <?php echo $show_transfers ? 'checked' : ''; ?>>
@@ -802,6 +863,23 @@ if (isset($_GET['export'])) {
                     mainCheckbox.checked = this.checked;
                 });
             }
+
+            // Показываем/скрываем блок выбора дат при переключении периода
+            const periodBtns = document.querySelectorAll('.period-btn');
+            const dateRange = document.getElementById('dateRange');
+            
+            periodBtns.forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    const href = this.getAttribute('href');
+                    if (href && href.includes('period=custom')) {
+                        setTimeout(() => {
+                            dateRange.classList.add('active');
+                        }, 100);
+                    } else if (dateRange) {
+                        dateRange.classList.remove('active');
+                    }
+                });
+            });
 
             // График динамики
             const dailyData = <?php echo json_encode(array_values($daily_stats)); ?>;
