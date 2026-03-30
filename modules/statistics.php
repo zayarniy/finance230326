@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once '../config/session.php';
+requireAuth();
 require_once '../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
@@ -102,7 +103,7 @@ if (!empty($filter_tag)) {
     $params[] = "%$filter_tag%";
 }
 
-$stmt = $pdo->prepare($sql);
+$stmt = $pdo->prepare($sql."ORDER BY t.transaction_date DESC");
 $stmt->execute($params);
 $transactions = $stmt->fetchAll();
 
@@ -697,30 +698,14 @@ if (isset($_GET['export'])) {
         </div>
     <?php endif; ?>
 
-    <!-- Топ меток -->
-    <?php if (!empty($tags_stats)): ?>
-        <div class="chart-container">
-            <div class="fw-semibold mb-3"><i class="bi bi-tags"></i> Топ меток</div>
-            <div class="row g-2">
-                <?php foreach ($tags_stats as $tag): ?>
-                    <div class="col-6">
-                        <div class="bg-light rounded-3 p-2">
-                            <div class="small text-muted">#<?php echo htmlspecialchars($tag['name']); ?></div>
-                            <div class="fw-bold"><?php echo number_format($tag['total'], 0, '.', ' '); ?> ₽</div>
-                            <div class="small"><?php echo $tag['count']; ?> операций</div>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
-    <?php endif; ?>
+
 
     <!-- Список операций -->
     <div class="chart-container">
         <div class="fw-semibold mb-3"><i class="bi bi-list-ul"></i> Последние операции</div>
         <div class="transaction-list">
             <?php if (count($transactions) > 0): ?>
-                <?php foreach (array_slice($transactions, 0, 10) as $t): ?>
+                <?php foreach (array_slice($transactions, 0, 15) as $t): ?>
                     <div class="transaction-item d-flex justify-content-between align-items-center">
                         <div>
                             <div class="small text-muted"><?php echo date('d.m.Y', strtotime($t['transaction_date'])); ?></div>
@@ -742,7 +727,23 @@ if (isset($_GET['export'])) {
             <?php endif; ?>
         </div>
     </div>
-
+    <!-- Топ меток -->
+    <?php if (!empty($tags_stats)): ?>
+        <div class="chart-container">
+            <div class="fw-semibold mb-3"><i class="bi bi-tags"></i> Топ меток</div>
+            <div class="row g-2">
+                <?php foreach ($tags_stats as $tag): ?>
+                    <div class="col-6">
+                        <div class="bg-light rounded-3 p-2">
+                            <div class="small text-muted">#<?php echo htmlspecialchars($tag['name']); ?></div>
+                            <div class="fw-bold"><?php echo number_format($tag['total'], 0, '.', ' '); ?> ₽</div>
+                            <div class="small"><?php echo $tag['count']; ?> операций</div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    <?php endif; ?>
     <a href="<?php echo buildFilterUrl(['export' => '1']); ?>" class="fab"><i class="bi bi-download"></i></a>
 
     <div class="mobile-nav">

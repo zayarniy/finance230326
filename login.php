@@ -1,7 +1,26 @@
 <?php
-//session_start();
-require_once 'config/session.php';
+// Настройки безопасности
+ini_set('session.cookie_httponly', 1);
+ini_set('session.use_only_cookies', 1);
+ini_set('session.cookie_samesite', 'Lax');
+
+// Запрещаем кэширование
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+
+// Уникальное имя сессии
+$session_name = 'finance_app';
+session_name($session_name);
+session_start();
+
 require_once 'config/database.php';
+
+// Проверка авторизации - если пользователь уже залогинен, перенаправляем
+if (isset($_SESSION['user_id']) && $_SESSION['user_id'] > 0) {
+    header('Location: dashboard.php');
+    exit;
+}
+
+$error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
@@ -13,9 +32,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $user = $stmt->fetch();
         
         if ($user && password_verify($password, $user['password_hash'])) {
-            $_SESSION['user_id'] = $user['id'];
+            // Очищаем старую сессию
+            session_unset();
+            session_destroy();
+            
+            // Создаем новую сессию
+            session_start();
+            
+            // Регенерируем ID сессии
+            session_regenerate_id(true);
+            
+            // Сохраняем данные пользователя
+            $_SESSION['user_id'] = (int)$user['id'];
             $_SESSION['username'] = $user['username'];
             $_SESSION['email'] = $user['email'];
+            $_SESSION['login_time'] = time();
+            $_SESSION['last_activity'] = time();
+            
             header('Location: dashboard.php');
             exit;
         } else {
@@ -33,8 +66,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <meta name="theme-color" content="#667eea">
     <title>Вход - Финансовый дневник</title>
-    <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="manifest" href="manifest.json">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
@@ -101,7 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <p class="mb-0">Войдите в свой аккаунт</p>
                     </div>
                     <div class="login-body">
-                        <?php if (isset($error)): ?>
+                        <?php if ($error): ?>
                             <div class="alert alert-danger alert-dismissible fade show" role="alert">
                                 <?php echo htmlspecialchars($error); ?>
                                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
@@ -129,8 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <i class="bi bi-box-arrow-in-right"></i> Войти
                             </button>
                         </form>
-                        
-                        
+
                     </div>
                 </div>
             </div>

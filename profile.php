@@ -1,7 +1,9 @@
 <?php
 //session_start();
 require_once 'config/session.php';
+requireAuth();
 require_once 'config/database.php';
+$user_id = $_SESSION['user_id'];
 
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
