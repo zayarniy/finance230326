@@ -415,11 +415,11 @@ $icons = ['🏦', '💳', '💰', '👛', '🐷', '🏢', '🔒', '🪙'];
                 <i class="bi bi-graph-up"></i>
                 <span>Статистика</span>
             </a>
-            <a href="modules/transfers.php" class="nav-item">
+            <a href="transfers.php" class="nav-item">
                 <i class="bi bi-arrow-left-right"></i>
                 <span>Переводы</span>
             </a>
-            <a href="modules/debts.php" class="nav-item">
+            <a href="debts.php" class="nav-item">
                 <i class="bi bi-credit-card-2-front"></i>
                 <span>Долги</span>
             </a>
