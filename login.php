@@ -10,14 +10,38 @@ header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 // Уникальное имя сессии
 $session_name = 'finance_app';
 session_name($session_name);
+
 session_start();
 
 require_once 'config/database.php';
 
-// Проверка авторизации - если пользователь уже залогинен, перенаправляем
+// Проверка авторизации - если пользователь уже залогинен
 if (isset($_SESSION['user_id']) && $_SESSION['user_id'] > 0) {
     header('Location: dashboard.php');
     exit;
+}
+
+// Проверка cookie "запомнить меня"
+if (!isset($_SESSION['user_id']) && isset($_COOKIE['remember_token'])) {
+    $token = $_COOKIE['remember_token'];
+    
+    // Ищем пользователя по токену
+    $stmt = $pdo->prepare("SELECT id, username, email FROM users WHERE remember_token = ? AND remember_token_expires > NOW()");
+    $stmt->execute([$token]);
+    $user = $stmt->fetch();
+    
+    if ($user) {
+        // Автоматический вход
+        session_regenerate_id(true);
+        $_SESSION['user_id'] = (int)$user['id'];
+        $_SESSION['username'] = $user['username'];
+        $_SESSION['email'] = $user['email'];
+        $_SESSION['login_time'] = time();
+        $_SESSION['last_activity'] = time();
+        
+        header('Location: dashboard.php');
+        exit;
+    }
 }
 
 $error = '';
@@ -25,6 +49,7 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
+    $remember_me = isset($_POST['remember_me']) && $_POST['remember_me'] == '1';
     
     if (!empty($username) && !empty($password)) {
         $stmt = $pdo->prepare("SELECT id, username, email, password_hash FROM users WHERE username = ?");
@@ -48,6 +73,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['email'] = $user['email'];
             $_SESSION['login_time'] = time();
             $_SESSION['last_activity'] = time();
+            
+            // Если отмечена галочка "Запомнить меня"
+            if ($remember_me) {
+                // Генерируем уникальный токен
+                $remember_token = bin2hex(random_bytes(32));
+                $expires = date('Y-m-d H:i:s', strtotime('+30 days'));
+                
+                // Сохраняем токен в базе данных
+                $stmt = $pdo->prepare("UPDATE users SET remember_token = ?, remember_token_expires = ? WHERE id = ?");
+                $stmt->execute([$remember_token, $expires, $user['id']]);
+                
+                // Устанавливаем cookie на 30 дней
+                setcookie('remember_token', $remember_token, time() + (86400 * 30), '/', '', false, true);
+            }
             
             header('Location: dashboard.php');
             exit;
@@ -119,6 +158,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background: #f8f9fa;
             border: 1px solid #e9ecef;
         }
+        
+        .form-check-label {
+            font-size: 14px;
+            color: #495057;
+        }
+        
+        .form-check-input {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        .btn-link {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        
+        .btn-link:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -148,7 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 </div>
                             </div>
                             
-                            <div class="mb-4">
+                            <div class="mb-3">
                                 <label class="form-label">Пароль</label>
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="bi bi-lock"></i></span>
@@ -156,11 +216,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 </div>
                             </div>
                             
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="remember_me" name="remember_me" value="1">
+                                <label class="form-check-label" for="remember_me">
+                                    Запомнить меня
+                                </label>
+                            </div>
+                            
                             <button type="submit" class="btn btn-primary btn-login w-100">
                                 <i class="bi bi-box-arrow-in-right"></i> Войти
                             </button>
                         </form>
-
+                        
                     </div>
                 </div>
             </div>

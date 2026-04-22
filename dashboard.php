@@ -17,6 +17,14 @@ $user_id = $_SESSION['user_id'];
 $selected_date = $_GET['date'] ?? date('Y-m-d');
 $selected_date_formatted = date('d.m.Y', strtotime($selected_date));
 
+// Продлеваем срок действия токена "запомнить меня" при активности пользователя
+if (isset($_COOKIE['remember_token'])) {
+    $token = $_COOKIE['remember_token'];
+    $new_expires = date('Y-m-d H:i:s', strtotime('+30 days'));
+    $stmt = $pdo->prepare("UPDATE users SET remember_token_expires = ? WHERE id = ? AND remember_token = ?");
+    $stmt->execute([$new_expires, $user_id, $token]);
+}
+
 // Получаем суммы доходов и расходов
 $stmt = $pdo->prepare("SELECT SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as total_income, SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as total_expense FROM transactions WHERE user_id = ? AND transaction_date <= ?");
 $stmt->execute([$user_id, $selected_date]);
@@ -40,11 +48,11 @@ foreach ($accounts_data as $account) {
 // Расходы за месяц
 $month_start = date('Y-m-01', strtotime($selected_date));
 $month_end = date('Y-m-t', strtotime($selected_date));
-$stmt = $pdo->prepare("SELECT SUM(amount) as month_expenses FROM transactions WHERE user_id = ? AND type = 'expense' AND transaction_date BETWEEN ? AND ?");
+$stmt = $pdo->prepare("SELECT SUM(amount) as month_expenses FROM transactions WHERE user_id = ? AND type = 'expense' AND description<>'Перевод: ' AND transaction_date BETWEEN ? AND ?");
 $stmt->execute([$user_id, $month_start, $month_end]);
 $month_expenses = $stmt->fetch()['month_expenses'] ?? 0;
 
-$stmt = $pdo->prepare("SELECT SUM(amount) as month_income FROM transactions WHERE user_id = ? AND type = 'income' AND transaction_date BETWEEN ? AND ?");
+$stmt = $pdo->prepare("SELECT SUM(amount) as month_income FROM transactions WHERE user_id = ? AND type = 'income' AND description<>'Перевод: ' AND transaction_date BETWEEN ? AND ?");
 $stmt->execute([$user_id, $month_start, $month_end]);
 $month_income = $stmt->fetch()['month_income'] ?? 0;
 
