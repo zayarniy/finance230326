@@ -108,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
     
-    // Удаление операции
+    // Удаление операции (уже есть в коде, оставляем)
     elseif (isset($_POST['delete_transaction'])) {
         $transaction_id = $_POST['transaction_id'] ?? 0;
         
@@ -335,11 +335,8 @@ $balance = $total_income - $total_expense;
             padding: 14px;
             margin: 0 16px 12px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-            cursor: pointer;
             transition: transform 0.2s;
         }
-        
-        .transaction-card:active { transform: scale(0.98); }
         
         .transaction-header {
             display: flex;
@@ -348,6 +345,7 @@ $balance = $total_income - $total_expense;
         }
         
         .transaction-date { font-size: 12px; color: #6c757d; }
+        .transaction-created { font-size: 10px; color: #adb5bd; margin-top: 2px; }
         
         .transaction-type {
             padding: 4px 10px;
@@ -370,6 +368,29 @@ $balance = $total_income - $total_expense;
         .transaction-amount.income { color: #28a745; }
         .transaction-amount.expense { color: #dc3545; }
         .transaction-amount.transfer { color: #6c757d; }
+        
+        .transaction-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .transaction-actions button {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            border: none;
+            background: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .transaction-actions button:active { transform: scale(0.95); }
+        .btn-edit { color: #667eea; }
+        .btn-delete { color: #dc3545; }
         
         .fab {
             position: fixed;
@@ -519,7 +540,10 @@ $balance = $total_income - $total_expense;
         <?php foreach ($transactions as $t): ?>
             <div class="transaction-card" data-id="<?php echo $t['id']; ?>" data-type="<?php echo $t['type']; ?>" data-account="<?php echo $t['account_id']; ?>" data-category="<?php echo $t['category_id']; ?>" data-amount="<?php echo $t['amount']; ?>" data-date="<?php echo $t['transaction_date']; ?>" data-desc="<?php echo htmlspecialchars($t['description'] ?? ''); ?>" data-tags="<?php echo htmlspecialchars($t['tags_text'] ?? ''); ?>">
                 <div class="transaction-header">
-                    <span class="transaction-date">📅 <?php echo date('d.m.Y', strtotime($t['transaction_date'])); ?></span>
+                    <div>
+                        <span class="transaction-date">📅 <?php echo date('d.m.Y', strtotime($t['transaction_date'])); ?></span>
+                        <div class="transaction-created">🕐 Добавлена: <?php echo date('d.m.Y H:i', strtotime($t['created_at'])); ?></div>
+                    </div>
                     <span class="transaction-type <?php echo $t['type']; ?>">
                         <?php echo $t['type'] == 'income' ? 'Доход' : ($t['type'] == 'expense' ? 'Расход' : 'Перевод'); ?>
                     </span>
@@ -544,6 +568,10 @@ $balance = $total_income - $total_expense;
                 <?php if (!empty($t['description'])): ?>
                     <div class="small text-muted mt-2">📝 <?php echo htmlspecialchars(substr($t['description'], 0, 50)); ?></div>
                 <?php endif; ?>
+                <div class="transaction-actions">
+                    <button class="btn-edit" onclick="event.stopPropagation(); editTransactionFromCard(this)">✏️ Редактировать</button>
+                    <button class="btn-delete" onclick="event.stopPropagation(); deleteTransactionFromCard(this)">🗑️ Удалить</button>
+                </div>
             </div>
         <?php endforeach; ?>
     <?php else: ?>
@@ -616,7 +644,7 @@ $balance = $total_income - $total_expense;
         </div></div>
     </div>
     
-    <!-- Transaction Modal -->
+    <!-- Transaction Modal (Add/Edit) -->
     <div class="modal fade" id="transactionModal" tabindex="-1">
         <div class="modal-dialog"><div class="modal-content">
             <div class="modal-header"><h5 id="modalTitle">Добавить операцию</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
@@ -653,11 +681,39 @@ $balance = $total_income - $total_expense;
         </div></div>
     </div>
     
+    <!-- Delete Transaction Modal -->
+    <div class="modal fade" id="deleteTransactionModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Удалить операцию?</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST" id="deleteForm">
+                    <div class="modal-body">
+                        <input type="hidden" name="transaction_id" id="delete_transaction_id">
+                        <p>Вы уверены, что хотите удалить эту операцию?</p>
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i> Это действие изменит баланс счета и не может быть отменено.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="submit" name="delete_transaction" class="btn btn-danger">Удалить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        let filterModal, transactionModal, deleteModal;
+        
         document.addEventListener('DOMContentLoaded', function() {
-            const filterModal = new bootstrap.Modal(document.getElementById('filterModal'));
-            const transactionModal = new bootstrap.Modal(document.getElementById('transactionModal'));
+            filterModal = new bootstrap.Modal(document.getElementById('filterModal'));
+            transactionModal = new bootstrap.Modal(document.getElementById('transactionModal'));
+            deleteModal = new bootstrap.Modal(document.getElementById('deleteTransactionModal'));
             
             document.getElementById('filterBtn').onclick = () => filterModal.show();
             document.getElementById('addBtn').onclick = () => { resetForm(); transactionModal.show(); };
@@ -721,28 +777,6 @@ $balance = $total_income - $total_expense;
                 return true;
             }
             
-            function editTransaction(transaction) {
-                document.getElementById('modalTitle').innerText = 'Редактировать операцию';
-                document.getElementById('transId').value = transaction.id;
-                document.getElementById('transType').value = transaction.type;
-                document.querySelector('select[name="account_id"]').value = transaction.account_id;
-                document.querySelector('input[name="amount"]').value = transaction.amount;
-                document.querySelector('input[name="transaction_date"]').value = transaction.transaction_date;
-                document.querySelector('textarea[name="description"]').value = transaction.description || '';
-                document.querySelector('input[name="tags_text"]').value = transaction.tags_text || '';
-                setType(transaction.type);
-                const categorySelect = document.querySelector('select[name="category_id"]');
-                for (let i = 0; i < categorySelect.options.length; i++) {
-                    if (categorySelect.options[i].value == transaction.category_id) {
-                        categorySelect.value = transaction.category_id;
-                        break;
-                    }
-                }
-                document.getElementById('submitBtn').name = 'edit_transaction';
-                document.getElementById('submitBtn').innerHTML = 'Сохранить';
-                transactionModal.show();
-            }
-            
             function resetForm() {
                 document.getElementById('transactionForm').reset();
                 document.getElementById('transId').value = '';
@@ -756,27 +790,67 @@ $balance = $total_income - $total_expense;
                 if (warn) warn.style.display = 'none';
             }
             
-            document.querySelectorAll('.transaction-card').forEach(card => {
-                card.onclick = function() {
-                    const transaction = {
-                        id: this.dataset.id,
-                        type: this.dataset.type,
-                        account_id: this.dataset.account,
-                        category_id: this.dataset.category,
-                        amount: this.dataset.amount,
-                        transaction_date: this.dataset.date,
-                        description: this.dataset.desc,
-                        tags_text: this.dataset.tags
-                    };
-                    editTransaction(transaction);
-                };
-            });
-            
             const accountSelect = document.querySelector('select[name="account_id"]');
             const amountInput = document.querySelector('input[name="amount"]');
             if (accountSelect) accountSelect.addEventListener('change', checkBalance);
             if (amountInput) amountInput.addEventListener('input', checkBalance);
         });
+        
+        function editTransactionFromCard(btn) {
+            const card = btn.closest('.transaction-card');
+            const transaction = {
+                id: card.dataset.id,
+                type: card.dataset.type,
+                account_id: card.dataset.account,
+                category_id: card.dataset.category,
+                amount: card.dataset.amount,
+                transaction_date: card.dataset.date,
+                description: card.dataset.desc,
+                tags_text: card.dataset.tags
+            };
+            
+            document.getElementById('modalTitle').innerText = 'Редактировать операцию';
+            document.getElementById('transId').value = transaction.id;
+            document.getElementById('transType').value = transaction.type;
+            document.querySelector('select[name="account_id"]').value = transaction.account_id;
+            document.querySelector('input[name="amount"]').value = transaction.amount;
+            document.querySelector('input[name="transaction_date"]').value = transaction.transaction_date;
+            document.querySelector('textarea[name="description"]').value = transaction.description || '';
+            document.querySelector('input[name="tags_text"]').value = transaction.tags_text || '';
+            
+            // Устанавливаем тип
+            const expenseBtn = document.getElementById('expenseBtn');
+            const incomeBtn = document.getElementById('incomeBtn');
+            if (transaction.type === 'expense') {
+                expenseBtn.classList.add('active-expense');
+                incomeBtn.classList.remove('active-income');
+            } else {
+                incomeBtn.classList.add('active-income');
+                expenseBtn.classList.remove('active-expense');
+            }
+            document.getElementById('transType').value = transaction.type;
+            
+            // Фильтруем категории
+            const categorySelect = document.querySelector('select[name="category_id"]');
+            for (let i = 0; i < categorySelect.options.length; i++) {
+                const opt = categorySelect.options[i];
+                if (opt.value === '') continue;
+                const optType = opt.getAttribute('data-type');
+                opt.style.display = optType === transaction.type ? '' : 'none';
+            }
+            categorySelect.value = transaction.category_id;
+            
+            document.getElementById('submitBtn').name = 'edit_transaction';
+            document.getElementById('submitBtn').innerHTML = 'Сохранить';
+            transactionModal.show();
+        }
+        
+        function deleteTransactionFromCard(btn) {
+            const card = btn.closest('.transaction-card');
+            const transactionId = card.dataset.id;
+            document.getElementById('delete_transaction_id').value = transactionId;
+            deleteModal.show();
+        }
         
         function toggleShowTransfers() {
             const checkbox = document.getElementById('showTransfers');
@@ -786,7 +860,6 @@ $balance = $total_income - $total_expense;
             } else {
                 currentUrl.searchParams.delete('show_transfers');
             }
-            // Сохраняем текущий тип фильтра
             const currentType = '<?php echo $filter_type; ?>';
             if (currentType !== 'all') {
                 currentUrl.searchParams.set('type', currentType);
