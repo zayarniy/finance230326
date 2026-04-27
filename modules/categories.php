@@ -125,6 +125,8 @@ $used_count = count($category_stats);
     <meta name="theme-color" content="#667eea">
     <title>Категории - Финансовый дневник</title>
     <link rel="icon" type="image/png" href="../favicon.png">
+    <link rel="manifest" href="../manifest.json">
+    <link rel="icon" type="image/png" href="../favicon.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>

@@ -93,7 +93,9 @@ $icons = ['🏦', '💳', '💰', '👛', '🐷', '🏢', '🔒', '🪙'];
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <meta name="theme-color" content="#667eea">
     <title>Счета - Финансовый дневник</title>
+        
     <link rel="icon" type="image/png" href="../favicon.png">
+    <link rel="manifest" href="../manifest.json">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
