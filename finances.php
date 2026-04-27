@@ -1,10 +1,10 @@
 <?php
-require_once '../config/session.php';
+require_once 'config/session.php';
 requireAuth();
-require_once '../config/database.php';
+require_once 'config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: ../login.php');
+    header('Location: login.php');
     exit;
 }
 
@@ -236,8 +236,8 @@ $balance = $total_income - $total_expense;
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <meta name="theme-color" content="#667eea">
     <title>Финансы - Финансовый дневник</title>
-    <link rel="icon" type="image/png" href="../favicon.png">    
-    <link rel="manifest" href="../manifest.json">
+    <link rel="icon" type="image/png" href="favicon.png">    
+    <link rel="manifest" href="manifest.json">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
@@ -491,7 +491,7 @@ $balance = $total_income - $total_expense;
 <body>
     <div class="mobile-header">
         <div class="d-flex justify-content-between align-items-center">
-            <a href="../dashboard.php" class="back-button">← Назад</a>
+            <a href="dashboard.php" class="back-button">← Назад</a>
             <button class="back-button" id="filterBtn">📊 Фильтр</button>
         </div>
         <div class="page-title fs-3 fw-bold mt-2">Финансы</div>
@@ -588,13 +588,13 @@ $balance = $total_income - $total_expense;
     
     <div class="mobile-nav">
         <div class="nav-scroll">
-            <a href="../dashboard.php" class="nav-item"><i class="bi bi-house-door"></i><span>Главная</span></a>
+            <a href="dashboard.php" class="nav-item"><i class="bi bi-house-door"></i><span>Главная</span></a>
             <a href="finances.php" class="nav-item active"><i class="bi bi-calculator-fill"></i><span>Финансы</span></a>
             <a href="accounts.php" class="nav-item"><i class="bi bi-bank"></i><span>Счета</span></a>
             <a href="statistics.php" class="nav-item"><i class="bi bi-graph-up"></i><span>Статистика</span></a>
             <a href="transfers.php" class="nav-item"><i class="bi bi-arrow-left-right"></i><span>Переводы</span></a>
             <a href="debts.php" class="nav-item"><i class="bi bi-credit-card-2-front"></i><span>Долги</span></a>
-            <a href="../profile.php" class="nav-item"><i class="bi bi-person"></i><span>Профиль</span></a>
+            <a href="profile.php" class="nav-item"><i class="bi bi-person"></i><span>Профиль</span></a>
         </div>
     </div>
     

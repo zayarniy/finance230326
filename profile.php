@@ -311,10 +311,10 @@ if (!$settings) {
             <i class="bi bi-grid"></i> Справочники
         </div>
         <div class="d-flex gap-2">
-            <a href="modules/tags.php" class="btn btn-outline-primary rounded-pill flex-fill">
+            <a href="tags.php" class="btn btn-outline-primary rounded-pill flex-fill">
                 <i class="bi bi-tags"></i> Метки
             </a>
-            <a href="modules/categories.php" class="btn btn-outline-primary rounded-pill flex-fill">
+            <a href="categories.php" class="btn btn-outline-primary rounded-pill flex-fill">
                 <i class="bi bi-grid"></i> Категории
             </a>
         </div>
@@ -421,23 +421,23 @@ if (!$settings) {
                 <i class="bi bi-house-door"></i>
                 <span>Главная</span>
             </a>
-            <a href="modules/finances.php" class="nav-item">
+            <a href="finances.php" class="nav-item">
                 <i class="bi bi-calculator"></i>
                 <span>Финансы</span>
             </a>
-            <a href="modules/accounts.php" class="nav-item">
+            <a href="accounts.php" class="nav-item">
                 <i class="bi bi-bank"></i>
                 <span>Счета</span>
             </a>
-            <a href="modules/statistics.php" class="nav-item">
+            <a href="statistics.php" class="nav-item">
                 <i class="bi bi-graph-up"></i>
                 <span>Статистика</span>
             </a>
-            <a href="modules/transfers.php" class="nav-item">
+            <a href="transfers.php" class="nav-item">
                 <i class="bi bi-arrow-left-right"></i>
                 <span>Переводы</span>
             </a>
-            <a href="modules/debts.php" class="nav-item">
+            <a href="debts.php" class="nav-item">
                 <i class="bi bi-credit-card-2-front"></i>
                 <span>Долги</span>
             </a>

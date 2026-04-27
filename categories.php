@@ -1,12 +1,12 @@
 <?php
 //session_start();
-require_once '../config/session.php';
+require_once 'config/session.php';
 requireAuth();
-require_once '../config/database.php';
+require_once 'config/database.php';
 
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: ../login.php');
+    header('Location: login.php');
     exit;
 }
 
@@ -124,9 +124,8 @@ $used_count = count($category_stats);
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <meta name="theme-color" content="#667eea">
     <title>Категории - Финансовый дневник</title>
-    <link rel="icon" type="image/png" href="../favicon.png">
-    <link rel="manifest" href="../manifest.json">
-    <link rel="icon" type="image/png" href="../favicon.png">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="manifest" href="manifest.json">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
@@ -444,7 +443,7 @@ $used_count = count($category_stats);
 <body>
     <div class="mobile-header">
         <div class="d-flex justify-content-between align-items-center">
-            <a href="../dashboard.php" class="back-button">← Назад</a>
+            <a href="dashboard.php" class="back-button">← Назад</a>
             <div></div>
         </div>
         <div class="page-title fs-3 fw-bold mt-2">Категории</div>
@@ -529,7 +528,7 @@ $used_count = count($category_stats);
 
     <div class="mobile-nav">
         <div class="nav-scroll">
-            <a href="../dashboard.php" class="nav-item">
+            <a href="dashboard.php" class="nav-item">
                 <i class="bi bi-house-door"></i>
                 <span>Главная</span>
             </a>
@@ -553,7 +552,7 @@ $used_count = count($category_stats);
                 <i class="bi bi-credit-card-2-front"></i>
                 <span>Долги</span>
             </a>
-            <a href="../profile.php" class="nav-item active">
+            <a href="profile.php" class="nav-item active">
                 <i class="bi bi-person"></i>
                 <span>Профиль</span>
             </a>

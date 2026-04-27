@@ -1,8 +1,8 @@
 <?php
 //session_start();
-require_once '../config/session.php';
+require_once 'config/session.php';
 requireAuth();
-require_once '../config/database.php';
+require_once 'config/database.php';
 
 $user_id = $_SESSION['user_id'];
 
@@ -401,7 +401,7 @@ $icons = ['🏦', '💳', '💰', '👛', '🐷', '🏢', '🔒', '🪙'];
 
     <div class="mobile-nav">
         <div class="nav-scroll">
-            <a href="../dashboard.php" class="nav-item">
+            <a href="dashboard.php" class="nav-item">
                 <i class="bi bi-house-door"></i>
                 <span>Главная</span>
             </a>
@@ -425,7 +425,7 @@ $icons = ['🏦', '💳', '💰', '👛', '🐷', '🏢', '🔒', '🪙'];
                 <i class="bi bi-credit-card-2-front"></i>
                 <span>Долги</span>
             </a>
-            <a href="../profile.php" class="nav-item">
+            <a href="profile.php" class="nav-item">
                 <i class="bi bi-person"></i>
                 <span>Профиль</span>
             </a>

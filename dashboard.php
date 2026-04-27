@@ -383,7 +383,7 @@ $recent = $stmt->fetchAll();
         <?php else: ?>
             <div class="text-center text-muted py-3">Нет активных счетов</div>
         <?php endif; ?>
-        <a href="modules/accounts.php" class="btn btn-outline-primary w-100 mt-3 rounded-pill">Управление счетами</a>
+        <a href="accounts.php" class="btn btn-outline-primary w-100 mt-3 rounded-pill">Управление счетами</a>
     </div>
 
     <div class="section-card">
@@ -408,10 +408,10 @@ $recent = $stmt->fetchAll();
         <?php else: ?>
             <div class="text-center text-muted py-3">Нет операций</div>
         <?php endif; ?>
-        <a href="modules/finances.php" class="btn btn-primary w-100 mt-3 rounded-pill">Добавить операцию</a>
+        <a href="finances.php" class="btn btn-primary w-100 mt-3 rounded-pill">Добавить операцию</a>
     </div>
 
-    <a href="modules/finances.php" class="fab"><i class="bi bi-plus-lg"></i></a>
+    <a href="finances.php" class="fab"><i class="bi bi-plus-lg"></i></a>
 
     <div class="mobile-nav">
         <div class="nav-scroll">
@@ -419,23 +419,23 @@ $recent = $stmt->fetchAll();
                 <i class="bi bi-house-door"></i>
                 <span>Главная</span>
             </a>
-            <a href="modules/finances.php" class="nav-item">
+            <a href="finances.php" class="nav-item">
                 <i class="bi bi-calculator"></i>
                 <span>Финансы</span>
             </a>
-            <a href="modules/accounts.php" class="nav-item">
+            <a href="accounts.php" class="nav-item">
                 <i class="bi bi-bank"></i>
                 <span>Счета</span>
             </a>
-            <a href="modules/statistics.php" class="nav-item">
+            <a href="statistics.php" class="nav-item">
                 <i class="bi bi-graph-up"></i>
                 <span>Статистика</span>
             </a>
-            <a href="modules/transfers.php" class="nav-item">
+            <a href="transfers.php" class="nav-item">
                 <i class="bi bi-arrow-left-right"></i>
                 <span>Переводы</span>
             </a>
-            <a href="modules/debts.php" class="nav-item">
+            <a href="debts.php" class="nav-item">
                 <i class="bi bi-credit-card-2-front"></i>
                 <span>Долги</span>
             </a>
